@@ -32,10 +32,17 @@
       </div>
     </div>
     <nav class="tabs" id="tabs">
-      <button data-tab="participants" class="active">Участники</button>
+      <button data-tab="protocol" class="active">Протокол</button>
+      <button data-tab="participants">Участники</button>
       <button data-tab="start">Старт</button>
-      <button data-tab="results">Результаты</button>
+      <button data-tab="oncourse">На дистанции</button>
     </nav>
+    <select id="roleSelect" class="role-select" title="Роль">
+      <option value="guest">Обычный пользователь</option>
+      <option value="startJudge">Судья старт</option>
+      <option value="finishJudge">Судья финиш</option>
+      <option value="admin">Суперпользователь</option>
+    </select>
     <span id="syncStatus" class="sync-status" title="Статус синхронизации">●</span>
     <div class="clock mono" id="headerClock">--:--:--</div>
     <button class="icon-btn" id="themeToggle" title="Тема">🌓</button>
@@ -45,8 +52,81 @@
 
   <main>
 
+    <!-- ===================== PROTOCOL TAB (public, read-only) ===================== -->
+    <section class="tab active" id="tab-protocol">
+      <div class="protocol-grid">
+        <div class="protocol-col-main">
+          <div class="card protocol-section" id="protoWaitingCard">
+            <h2>Ожидание (<span id="protoWaitingCount">0</span>)</h2>
+            <div class="protocol-list" id="protoWaitingList"></div>
+            <div class="empty" id="protoWaitingEmpty" style="display:none;">Пусто.</div>
+          </div>
+          <div class="card protocol-section" id="protoRacingCard">
+            <h2>На дистанции (<span id="protoRacingCount">0</span>)</h2>
+            <div class="protocol-list" id="protoRacingList"></div>
+            <div class="empty" id="protoRacingEmpty" style="display:none;">Пусто.</div>
+          </div>
+        </div>
+        <div class="protocol-col-side">
+          <div class="card protocol-section" id="protoPrepCard">
+            <h2>Готовятся</h2>
+            <div class="protocol-list" id="protoPrepList"></div>
+            <div class="empty" id="protoPrepEmpty" style="display:none;">Пока никто не отмечен.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row" style="justify-content:space-between; margin-bottom:12px;">
+          <h2 style="margin:0;">Онлайн результат</h2>
+          <div class="row">
+            <select id="resultsCategoryFilter" style="width:auto;">
+              <option value="">Все категории</option>
+              <option value="Бег">Бег</option>
+              <option value="Велосипед">Велосипед</option>
+            </select>
+            <button class="btn" id="btnExportCsv">Экспорт CSV</button>
+            <button class="btn" id="btnExportXls">Excel (2 вкладки)</button>
+          </div>
+        </div>
+        <div class="tablewrap">
+          <table class="responsive-mobile">
+            <thead>
+              <tr>
+                <th>Место</th><th>№</th><th>Имя</th><th>Категория</th><th>Чистое время</th>
+              </tr>
+            </thead>
+            <tbody id="resultsBody"></tbody>
+          </table>
+        </div>
+        <div class="empty" id="resultsEmpty" style="display:none;">Финишировавших участников пока нет.</div>
+      </div>
+
+      <div class="card" id="dnsDnfCard" style="display:none;">
+        <h2>Не явились / сошли с дистанции</h2>
+        <div class="tablewrap">
+          <table class="responsive-mobile">
+            <thead>
+              <tr>
+                <th>№</th><th>Имя</th><th>Категория</th><th>Статус</th>
+              </tr>
+            </thead>
+            <tbody id="dnsDnfBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" id="adminResetCard" style="display:none;">
+        <div class="row" style="justify-content:space-between;">
+          <h2 style="margin:0;">Сброс данных</h2>
+          <button class="btn danger" id="btnResetAll">Сбросить всё</button>
+        </div>
+        <p style="font-size:12px; color:var(--text-dim); margin-bottom:0;">Удаляет всех участников и результаты безвозвратно. Требует подтверждения.</p>
+      </div>
+    </section>
+
     <!-- ===================== PARTICIPANTS TAB ===================== -->
-    <section class="tab active" id="tab-participants">
+    <section class="tab" id="tab-participants">
       <div class="grid2">
         <div class="card">
           <h2>Добавить участника</h2>
@@ -88,7 +168,7 @@
           </div>
         </div>
 
-        <div class="card">
+        <div class="card" id="csvCard">
           <h2>Импорт / экспорт CSV</h2>
           <p style="font-size:12px; color:var(--text-dim); margin-top:0;">
             Заголовки столбцов: <span class="mono">bib,name,category,gender,agegroup</span> (или на русском: номер,имя,категория,пол,группа). Разделитель — запятая. Столбец с номером не обязателен — можно импортировать только фамилии, а номера присвоить позже.
@@ -122,7 +202,7 @@
             </select>
           </div>
         </div>
-        <p style="font-size:12px; color:var(--text-dim); margin:0 0 10px;">
+        <p style="font-size:12px; color:var(--text-dim); margin:0 0 10px;" id="startOrderHint">
           «Оч. старта» — если заранее известен порядок старта, задайте номер очереди (1, 2, 3…) у нужных участников — они станут раньше остальных, по возрастанию. У кого 0 (по умолчанию) — стартуют в обычном порядке по номеру. Если у нескольких участников одинаковая очередь старта — при выборе следующего на старт отметятся сразу все они.
         </p>
         <div class="tablewrap">
@@ -141,7 +221,7 @@
 
     <!-- ===================== START TAB ===================== -->
     <section class="tab" id="tab-start">
-      <div class="card">
+      <div class="card" id="startSettingsCard">
         <h2>Настройки старта</h2>
         <div class="row">
           <div class="field" style="max-width:260px;">
@@ -179,78 +259,28 @@
           <div class="empty" id="queueEmpty" style="display:none;">Все участники стартовали или список пуст.</div>
         </div>
       </div>
-
-      <div class="grid2" style="margin-top:16px;">
-        <div class="card">
-          <h2>Быстрый финиш по номеру</h2>
-          <div class="quickfinish">
-            <input type="text" id="quickBibInput" inputmode="numeric" placeholder="Номер (bib)" class="mono">
-            <button class="btn primary" id="btnQuickFinish" style="white-space:nowrap;">Финиш ⏱</button>
-          </div>
-          <div id="quickFinishMsg" style="font-size:12px; color:var(--text-dim); margin-top:8px;"></div>
-        </div>
-        <div class="card">
-          <h2>На дистанции (<span id="onCourseCount">0</span>)</h2>
-          <div id="onCourseList" style="max-height:220px; overflow-y:auto;"></div>
-          <div class="empty" id="onCourseEmpty" style="display:none;">Пока никто не на дистанции.</div>
-        </div>
-      </div>
     </section>
 
-    <!-- ===================== RESULTS TAB ===================== -->
-    <section class="tab" id="tab-results">
+    <!-- ===================== ON COURSE / FINISH TAB ===================== -->
+    <section class="tab" id="tab-oncourse">
       <div class="card">
-        <div class="row" style="justify-content:space-between; margin-bottom:12px;">
-          <h2 style="margin:0;">Результаты</h2>
-          <div class="row">
-            <select id="resultsCategoryFilter" style="width:auto;">
-              <option value="">Все категории</option>
-              <option value="Бег">Бег</option>
-              <option value="Велосипед">Велосипед</option>
-            </select>
-            <button class="btn" id="btnExportCsv">Экспорт CSV</button>
-            <button class="btn" id="btnExportXls">Excel (2 вкладки)</button>
-          </div>
+        <h2>Быстрый финиш по номеру</h2>
+        <div class="quickfinish">
+          <input type="text" id="quickBibInput" inputmode="numeric" placeholder="Номер (bib)" class="mono">
+          <button class="btn primary" id="btnQuickFinish" style="white-space:nowrap;">Финиш ⏱</button>
         </div>
-        <div class="tablewrap">
-          <table class="responsive-mobile">
-            <thead>
-              <tr>
-                <th>Место</th><th>№</th><th>Имя</th><th>Категория</th><th>Старт</th><th>Финиш</th><th>Чистое время</th><th></th>
-              </tr>
-            </thead>
-            <tbody id="resultsBody"></tbody>
-          </table>
-        </div>
-        <div class="empty" id="resultsEmpty" style="display:none;">Финишировавших участников пока нет.</div>
+        <div id="quickFinishMsg" style="font-size:12px; color:var(--text-dim); margin-top:8px;"></div>
       </div>
-
-      <div class="card" id="dnfCard" style="display:none;">
-        <h2>Сошли с дистанции</h2>
-        <div class="tablewrap">
-          <table class="responsive-mobile">
-            <thead>
-              <tr>
-                <th>№</th><th>Имя</th><th>Категория</th><th>Старт</th><th></th>
-              </tr>
-            </thead>
-            <tbody id="dnfBody"></tbody>
-          </table>
-        </div>
-      </div>
-
       <div class="card">
-        <div class="row" style="justify-content:space-between;">
-          <h2 style="margin:0;">Сброс данных</h2>
-          <button class="btn danger" id="btnResetAll">Сбросить всё</button>
-        </div>
-        <p style="font-size:12px; color:var(--text-dim); margin-bottom:0;">Удаляет всех участников и результаты безвозвратно. Требует подтверждения.</p>
+        <h2>На дистанции (<span id="onCourseCount">0</span>)</h2>
+        <div id="onCourseList"></div>
+        <div class="empty" id="onCourseEmpty" style="display:none;">Пока никто не на дистанции.</div>
       </div>
     </section>
 
   </main>
 
-  <footer>RaceTimer · работает полностью офлайн · данные хранятся локально в этом браузере</footer>
+  <footer>RaceTimer · данные синхронизируются онлайн между устройствами</footer>
 </div>
 
 <div class="toast" id="toast"></div>

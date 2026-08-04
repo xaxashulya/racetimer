@@ -51,10 +51,15 @@
 
   .clock{font-size:20px; font-weight:700; padding:6px 12px; border:1px solid var(--border); border-radius:8px; background:var(--bg-card);}
 
-  .sync-status{font-size:14px; line-height:1; cursor:default;}
+  .sync-status{font-size:22px; line-height:1; cursor:default;}
   .sync-status.online{color:var(--success);}
   .sync-status.offline{color:var(--text-faint);}
   .sync-status.error{color:var(--danger);}
+
+  .role-select{
+    background:var(--bg-card); border:1px solid var(--border-strong); color:var(--text);
+    border-radius:8px; padding:8px 10px; font-size:13px; font-weight:700; cursor:pointer;
+  }
   .sync-banner{
     background:rgba(255,90,31,.12); border-bottom:1px solid var(--accent); color:var(--text);
     font-size:13px; padding:10px 18px; text-align:center;
@@ -121,7 +126,7 @@
   .badge.dnf{background:rgba(225,75,75,.15); color:var(--danger);}
   .badge.dns{background:rgba(92,104,112,.22); color:var(--text-faint);}
 
-  .startorder-input{width:64px; padding:6px 6px; text-align:center;}
+  .startorder-input{width:48px; padding:6px 4px; text-align:center;}
 
   /* ---- Start tab hero ---- */
   .start-hero{
@@ -175,6 +180,24 @@
   .quickfinish input{font-size:20px; text-align:center; font-weight:800;}
 
   .empty{color:var(--text-faint); font-size:13px; padding:14px 4px; text-align:center;}
+
+  /* ---- Протокол (public dashboard) ---- */
+  .protocol-grid{display:grid; grid-template-columns:2fr 1fr; gap:16px; align-items:start;}
+  @media (max-width:900px){ .protocol-grid{grid-template-columns:1fr;} }
+  .protocol-col-main, .protocol-col-side{display:flex; flex-direction:column; gap:16px;}
+  .protocol-section h2{display:flex; align-items:center; gap:8px;}
+  .protocol-list{display:flex; flex-direction:column; gap:6px; max-height:420px; overflow-y:auto;}
+  .protocol-row{
+    display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:9px;
+    border:1px solid var(--border); flex-wrap:wrap;
+  }
+  .protocol-row .bib{flex-shrink:0;}
+  .protocol-row .name{flex:1; font-weight:600; min-width:80px;}
+  .protocol-row .elapsed{font-weight:800; font-family:ui-monospace,"SF Mono",Consolas,monospace;}
+  .protocol-row.waiting{background:rgba(147,160,169,.10); border-color:var(--border);}
+  .protocol-row.racing{background:rgba(255,90,31,.10); border-color:rgba(255,90,31,.35);}
+  .protocol-row.prep{background:rgba(62,142,208,.12); border-color:rgba(62,142,208,.35);}
+  .protocol-row.finished{background:rgba(76,145,105,.10); border-color:rgba(76,145,105,.35);}
 
   footer{padding:14px 18px; text-align:center; color:var(--text-faint); font-size:11px;}
 

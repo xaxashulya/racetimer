@@ -8,16 +8,13 @@
   // Leave the placeholder as-is to run in local-only (no sync) mode.
   // =================================================================
 
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebase_Config = {
+const FIREBASE_CONFIG = {
   apiKey: "AIzaSyBncAe5D5L41KZCBSfHb707t402g45s6m4",
   authDomain: "app-racetimer.firebaseapp.com",
-  databaseURL: "https://app-racetimer-default-rtdb.firebaseio.com",
   projectId: "app-racetimer",
   storageBucket: "app-racetimer.firebasestorage.app",
   messagingSenderId: "807387307953",
-  appId: "1:807387307953:web:0751a821578e1eb254a790",
-  measurementId: "G-3DYEP4T6J9"
+  appId: "1:807387307953:web:0751a821578e1eb254a790"
 };
   // =================================================================
 

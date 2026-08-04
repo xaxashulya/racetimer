@@ -23,7 +23,7 @@ const firebaseConfig = {
 
   let db = null, firebaseReady = false;
   try{
-    if(window.firebase && FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.apiKey.indexOf("AIzaSyBncAe5D5L41KZCBSfHb707t402g45s6m4") === -1){
+    if(window.firebase && FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.apiKey.indexOf("ВСТАВЬТЕ") === -1){
       firebase.initializeApp(FIREBASE_CONFIG);
       db = firebase.firestore();
       firebaseReady = true;

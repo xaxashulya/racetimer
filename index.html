@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>RaceTimer — хронометраж вертикального забега</title>
+<link rel="stylesheet" href="css/style.css">
+
+</head>
+<body>
+<svg id="contours" viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+  <g fill="none" stroke="currentColor" stroke-width="1.4">
+    <path d="M-50,780 C150,700 250,850 450,760 C650,670 750,820 1050,740"/>
+    <path d="M-50,830 C150,750 260,900 460,810 C660,720 760,870 1050,790"/>
+    <path d="M-50,880 C150,800 270,950 470,860 C670,770 770,920 1050,840"/>
+    <path d="M-50,930 C150,850 280,1000 480,910 C680,820 780,970 1050,890"/>
+    <path d="M-50,600 C200,520 300,650 500,560 C700,470 800,600 1050,520"/>
+    <path d="M-50,540 C200,460 310,590 510,500 C710,410 810,540 1050,460"/>
+    <path d="M-50,300 C220,220 330,360 520,270 C710,180 830,320 1050,230"/>
+    <path d="M-50,240 C220,160 340,300 530,210 C720,120 840,260 1050,170"/>
+  </g>
+</svg>
+
+<div id="app">
+  <header>
+    <div class="brand">
+      <div class="mark cond">RT</div>
+      <div>
+        <h1>RaceTimer</h1>
+        <div class="sub" id="eventSub">Хронометраж вертикального забега / заезда</div>
+      </div>
+    </div>
+    <nav class="tabs" id="tabs">
+      <button data-tab="participants" class="active">Участники</button>
+      <button data-tab="start">Старт</button>
+      <button data-tab="results">Результаты</button>
+    </nav>
+    <div class="clock mono" id="headerClock">--:--:--</div>
+    <button class="icon-btn" id="themeToggle" title="Тема">🌓</button>
+  </header>
+
+  <main>
+
+    <!-- ===================== PARTICIPANTS TAB ===================== -->
+    <section class="tab active" id="tab-participants">
+      <div class="grid2">
+        <div class="card">
+          <h2>Добавить участника</h2>
+          <div class="row">
+            <div class="field" style="flex:2; min-width:200px;">
+              <label>Имя, фамилия</label>
+              <input type="text" id="addName" placeholder="Иван Петров">
+            </div>
+            <div class="field" style="max-width:150px;">
+              <label>Номер (если уже известен)</label>
+              <input type="text" id="addBib" inputmode="numeric" placeholder="выдать позже">
+            </div>
+          </div>
+          <p style="font-size:12px; color:var(--text-dim); margin:8px 0 0;">
+            Можно заранее забить только фамилии — номер участник получит на месте, и его можно будет присвоить позже кнопкой «Выдать номер».
+          </p>
+          <div class="row" style="margin-top:10px;">
+            <div class="field">
+              <label>Категория</label>
+              <select id="addCategory">
+                <option value="Бег">Бег</option>
+                <option value="Велосипед">Велосипед</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Пол</label>
+              <select id="addGender">
+                <option value="М">М</option>
+                <option value="Ж">Ж</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Возрастная группа (опц.)</label>
+              <input type="text" id="addAgeGroup" placeholder="напр. 35-44">
+            </div>
+          </div>
+          <div class="row" style="margin-top:12px;">
+            <button class="btn primary" id="btnAddParticipant">+ Добавить</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Импорт / экспорт CSV</h2>
+          <p style="font-size:12px; color:var(--text-dim); margin-top:0;">
+            Заголовки столбцов: <span class="mono">bib,name,category,gender,agegroup</span> (или на русском: номер,имя,категория,пол,группа). Разделитель — запятая. Столбец с номером не обязателен — можно импортировать только фамилии, а номера присвоить позже.
+          </p>
+          <input type="file" id="csvFile" accept=".csv,text/csv" style="margin-bottom:10px;">
+          <div class="row">
+            <button class="btn" id="btnImportCsv">Импортировать</button>
+            <span id="importStatus" style="font-size:12px; color:var(--text-dim);"></span>
+          </div>
+          <div class="row" style="margin-top:10px; padding-top:10px; border-top:1px solid var(--border);">
+            <button class="btn" id="btnExportParticipants">Экспорт участников в CSV</button>
+          </div>
+          <p style="font-size:11px; color:var(--text-faint); margin:8px 0 0;">
+            Чтобы вести хронометраж на другом устройстве: экспортируйте список здесь, передайте файл (флешкой, в мессенджере, по почте) и импортируйте его там.
+          </p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row" style="margin-bottom:12px; justify-content:space-between;">
+          <h2 style="margin:0;">Список участников</h2>
+          <div class="row">
+            <div class="search-box">
+              <span>🔎</span>
+              <input type="search" id="participantSearch" placeholder="Поиск по номеру или имени">
+            </div>
+            <select id="categoryFilter" style="width:auto;">
+              <option value="">Все категории</option>
+              <option value="Бег">Бег</option>
+              <option value="Велосипед">Велосипед</option>
+            </select>
+          </div>
+        </div>
+        <p style="font-size:12px; color:var(--text-dim); margin:0 0 10px;">
+          «Оч. старта» — если заранее известен порядок старта, задайте номер очереди (1, 2, 3…) у нужных участников — они станут раньше остальных, по возрастанию. У кого 0 (по умолчанию) — стартуют в обычном порядке по номеру. Если у нескольких участников одинаковая очередь старта — при выборе следующего на старт отметятся сразу все они.
+        </p>
+        <div class="tablewrap">
+          <table class="responsive-mobile">
+            <thead>
+              <tr>
+                <th>№</th><th>Имя</th><th>Категория</th><th>Пол</th><th>Группа</th><th>Оч. старта</th><th>Статус</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="participantsBody"></tbody>
+          </table>
+        </div>
+        <div class="empty" id="participantsEmpty" style="display:none;">Пока нет участников — добавьте вручную или импортируйте CSV.</div>
+      </div>
+    </section>
+
+    <!-- ===================== START TAB ===================== -->
+    <section class="tab" id="tab-start">
+      <div class="card">
+        <h2>Настройки старта</h2>
+        <div class="row">
+          <div class="field" style="max-width:260px;">
+            <label>Режим отсчёта</label>
+            <div class="pill-toggle" id="startModeToggle">
+              <button data-startmode="auto" class="active">Авто</button>
+              <button data-startmode="manual">Ручной</button>
+            </div>
+          </div>
+          <div class="field" style="max-width:130px;">
+            <label>Интервал (сек)</label>
+            <input type="number" id="intervalInput" min="5" step="5" value="60">
+          </div>
+        </div>
+        <p style="font-size:12px; color:var(--text-dim); margin:10px 0 0;">
+          Отметьте галочками одного, нескольких или сразу всех участников в очереди — они стартуют вместе. В автоматическом режиме по истечении интервала выбранные участники стартуют сами. В ручном режиме отсчёт не идёт — старт фиксируется только по нажатию кнопки «Старт».
+        </p>
+      </div>
+
+      <div class="start-hero">
+        <div class="countdown-card">
+          <div class="countdown-label" id="countdownLabel">До следующего старта</div>
+          <div class="countdown-num mono" id="countdownNum">—:—</div>
+          <div class="clock-now mono" id="currentClock2">--:--:--.--</div>
+
+          <div class="next-up" id="nextUpChips"></div>
+
+          <button class="big-btn start" id="btnBigStart" disabled>Старт</button>
+        </div>
+
+        <div class="card" style="margin-bottom:0;">
+          <h2>Очередь ожидания старта</h2>
+          <p style="font-size:12px; color:var(--text-dim); margin-top:-6px;">Нажмите на участника(ов), чтобы выбрать следующим на старт — можно любое количество: 1, 2, 3 и больше.</p>
+          <div class="queue-list" id="queueList"></div>
+          <div class="empty" id="queueEmpty" style="display:none;">Все участники стартовали или список пуст.</div>
+        </div>
+      </div>
+
+      <div class="grid2" style="margin-top:16px;">
+        <div class="card">
+          <h2>Быстрый финиш по номеру</h2>
+          <div class="quickfinish">
+            <input type="text" id="quickBibInput" inputmode="numeric" placeholder="Номер (bib)" class="mono">
+            <button class="btn primary" id="btnQuickFinish" style="white-space:nowrap;">Финиш ⏱</button>
+          </div>
+          <div id="quickFinishMsg" style="font-size:12px; color:var(--text-dim); margin-top:8px;"></div>
+        </div>
+        <div class="card">
+          <h2>На дистанции (<span id="onCourseCount">0</span>)</h2>
+          <div id="onCourseList" style="max-height:220px; overflow-y:auto;"></div>
+          <div class="empty" id="onCourseEmpty" style="display:none;">Пока никто не на дистанции.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== RESULTS TAB ===================== -->
+    <section class="tab" id="tab-results">
+      <div class="card">
+        <div class="row" style="justify-content:space-between; margin-bottom:12px;">
+          <h2 style="margin:0;">Результаты</h2>
+          <div class="row">
+            <select id="resultsCategoryFilter" style="width:auto;">
+              <option value="">Все категории</option>
+              <option value="Бег">Бег</option>
+              <option value="Велосипед">Велосипед</option>
+            </select>
+            <button class="btn" id="btnExportCsv">Экспорт CSV</button>
+            <button class="btn" id="btnExportXls">Excel (2 вкладки)</button>
+          </div>
+        </div>
+        <div class="tablewrap">
+          <table class="responsive-mobile">
+            <thead>
+              <tr>
+                <th>Место</th><th>№</th><th>Имя</th><th>Категория</th><th>Старт</th><th>Финиш</th><th>Чистое время</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="resultsBody"></tbody>
+          </table>
+        </div>
+        <div class="empty" id="resultsEmpty" style="display:none;">Финишировавших участников пока нет.</div>
+      </div>
+
+      <div class="card" id="dnfCard" style="display:none;">
+        <h2>Сошли с дистанции</h2>
+        <div class="tablewrap">
+          <table class="responsive-mobile">
+            <thead>
+              <tr>
+                <th>№</th><th>Имя</th><th>Категория</th><th>Старт</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="dnfBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row" style="justify-content:space-between;">
+          <h2 style="margin:0;">Сброс данных</h2>
+          <button class="btn danger" id="btnResetAll">Сбросить всё</button>
+        </div>
+        <p style="font-size:12px; color:var(--text-dim); margin-bottom:0;">Удаляет всех участников и результаты безвозвратно. Требует подтверждения.</p>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>RaceTimer · работает полностью офлайн · данные хранятся локально в этом браузере</footer>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="js/app.js"></script>
+</body>
+</html>

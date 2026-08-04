@@ -42,80 +42,6 @@ const firebaseConfig = {
     el.title = title;
   }
 
-  // =================================================================
-  // ROLES — change these passwords to your own. Anyone who knows a
-  // password can unlock that role in the dropdown at the top of the
-  // page. This is a simple deterrent, not real security — don't use
-  // it to protect anything sensitive.
-  // =================================================================
-  const ROLE_PASSWORDS = {
-    startJudge: "start123",
-    finishJudge: "finish123",
-    admin: "admin123"
-  };
-  const ROLE_LABELS = {
-    guest: "Обычный пользователь",
-    startJudge: "Судья старт",
-    finishJudge: "Судья финиш",
-    admin: "Суперпользователь"
-  };
-  const ROLE_PERMS = {
-    guest:       { tabs: ["protocol"], actions: {} },
-    startJudge:  { tabs: ["protocol","participants","start","oncourse"],
-                   actions: { start:true, revertStart:true, dns:true, addParticipant:true, assignBib:true, setStartOrder:true } },
-    finishJudge: { tabs: ["protocol","oncourse"],
-                   actions: { finish:true, revertStart:true, dnf:true } },
-    admin:       { tabs: ["protocol","participants","start","oncourse"], actions: { all:true } }
-  };
-  let currentRole = "guest";
-
-  function can(action){
-    const perms = ROLE_PERMS[currentRole];
-    if(!perms) return false;
-    return !!(perms.actions.all || perms.actions[action]);
-  }
-  function tabAllowed(tabId){
-    const perms = ROLE_PERMS[currentRole];
-    return !!(perms && perms.tabs.indexOf(tabId) !== -1);
-  }
-  function isAdmin(){ return currentRole === "admin"; }
-
-  function applyRoleUI(){
-    // show/hide nav tab buttons the current role isn't allowed to see
-    document.querySelectorAll("nav.tabs button[data-tab]").forEach(btn=>{
-      const allowed = tabAllowed(btn.dataset.tab);
-      btn.style.display = allowed ? "" : "none";
-    });
-    // if the currently active tab is no longer allowed, fall back to Протокол
-    const activeBtn = document.querySelector("nav.tabs button.active");
-    if(activeBtn && !tabAllowed(activeBtn.dataset.tab)){
-      const fallback = document.querySelector('nav.tabs button[data-tab="protocol"]');
-      document.querySelectorAll("nav.tabs button").forEach(b=>b.classList.toggle("active", b===fallback));
-      document.querySelectorAll("section.tab").forEach(s=>s.classList.toggle("active", s.id === "tab-protocol"));
-    }
-    document.getElementById("roleSelect").value = currentRole;
-    renderAll();
-  }
-
-  document.getElementById("roleSelect").addEventListener("change", (e)=>{
-    const wanted = e.target.value;
-    if(wanted === "guest" || wanted === currentRole){
-      currentRole = wanted;
-      applyRoleUI();
-      return;
-    }
-    const pass = prompt("Пароль для роли «" + ROLE_LABELS[wanted] + "»:");
-    if(pass === null){ e.target.value = currentRole; return; }
-    if(pass === ROLE_PASSWORDS[wanted]){
-      currentRole = wanted;
-      showToast("Роль: " + ROLE_LABELS[wanted]);
-      applyRoleUI();
-    } else {
-      alert("Неверный пароль");
-      e.target.value = currentRole;
-    }
-  });
-
   // ---------------------------------------------------------------
   // State
   // ---------------------------------------------------------------
@@ -332,7 +258,7 @@ const firebaseConfig = {
   // ---------------------------------------------------------------
   document.getElementById("tabs").addEventListener("click", (e)=>{
     const btn = e.target.closest("button[data-tab]");
-    if(!btn || !tabAllowed(btn.dataset.tab)) return;
+    if(!btn) return;
     document.querySelectorAll("nav.tabs button").forEach(b=>b.classList.toggle("active", b===btn));
     document.querySelectorAll("section.tab").forEach(s=>s.classList.toggle("active", s.id === "tab-"+btn.dataset.tab));
     renderAll();
@@ -510,7 +436,6 @@ const firebaseConfig = {
   }
 
   document.getElementById("btnImportCsv").addEventListener("click", ()=>{
-    if(!can("importCsv")) return;
     const fileInput = document.getElementById("csvFile");
     const file = fileInput.files && fileInput.files[0];
     const statusEl = document.getElementById("importStatus");
@@ -530,7 +455,6 @@ const firebaseConfig = {
   });
 
   document.getElementById("btnExportParticipants").addEventListener("click", ()=>{
-    if(!can("importCsv")) return;
     if(!state.participants.length){ showToast("Список участников пуст — нечего экспортировать"); return; }
     const header = ["bib","name","category","gender","agegroup","status"];
     const lines = [header.join(",")];
@@ -545,7 +469,6 @@ const firebaseConfig = {
   // Add participant form
   // ---------------------------------------------------------------
   document.getElementById("btnAddParticipant").addEventListener("click", ()=>{
-    if(!can("addParticipant")) return;
     const bib = document.getElementById("addBib").value;
     const name = document.getElementById("addName").value;
     const category = document.getElementById("addCategory").value;
@@ -588,9 +511,6 @@ const firebaseConfig = {
     const catFilter = document.getElementById("categoryFilter").value;
     const body = document.getElementById("participantsBody");
     body.innerHTML = "";
-
-    document.getElementById("csvCard").style.display = can("importCsv") ? "" : "none";
-
     let list = state.participants.slice().sort((a,b)=>{
       const aHas = !!a.bib, bHas = !!b.bib;
       if(aHas && bHas) return (a.bib.length-b.bib.length) || a.bib.localeCompare(b.bib,'ru',{numeric:true});
@@ -607,20 +527,16 @@ const firebaseConfig = {
       const bibCell = p.bib
         ? '<span class="bib mono">'+escapeHtml(p.bib)+'</span>'
         : '<span style="color:var(--text-faint);">—</span>';
-      const assignBtn = (p.status === "preregistered" && can("assignBib"))
+      const assignBtn = p.status === "preregistered"
         ? '<button class="btn small primary" data-assign="'+p.id+'">Выдать номер</button> '
         : '';
-      let dnsBtn = "";
-      if(can("dns")){
-        if(p.status === "waiting") dnsBtn = '<button class="btn small" data-dns="'+p.id+'">Не явился</button> ';
-        else if(p.status === "dns") dnsBtn = '<button class="btn small primary" data-undo-dns="'+p.id+'">Вернуть в очередь</button> ';
-      }
-      const orderEditable = (p.status === "waiting" || p.status === "dns") && can("setStartOrder");
+      const dnsBtn = p.status === "waiting"
+        ? '<button class="btn small" data-dns="'+p.id+'">Не явился</button> '
+        : (p.status === "dns" ? '<button class="btn small primary" data-undo-dns="'+p.id+'">Вернуть в очередь</button> ' : '');
+      const orderEditable = (p.status === "waiting" || p.status === "dns");
       const orderCell = orderEditable
         ? '<input type="number" class="startorder-input mono" min="0" step="1" value="'+(p.startOrder||0)+'" data-order-id="'+p.id+'">'
-        : (p.startOrder ? String(p.startOrder) : '<span style="color:var(--text-faint);">—</span>');
-      const editBtn = can("editParticipant") ? '<button class="btn small" data-edit-p="'+p.id+'">Редакт.</button> ' : '';
-      const delBtn = can("deleteParticipant") ? '<button class="btn small danger" data-del="'+p.id+'">Удалить</button>' : '';
+        : '<span style="color:var(--text-faint);">—</span>';
       tr.innerHTML =
         '<td data-label="№">'+bibCell+'</td>'+
         '<td data-label="Имя">'+escapeHtml(p.name)+'</td>'+
@@ -629,14 +545,14 @@ const firebaseConfig = {
         '<td data-label="Группа">'+escapeHtml(p.ageGroup||"—")+'</td>'+
         '<td data-label="Оч. старта">'+orderCell+'</td>'+
         '<td data-label="Статус"><span class="badge '+statusBadgeClass(p.status)+'">'+statusLabel(p.status)+'</span></td>'+
-        '<td data-actions>'+assignBtn+dnsBtn+editBtn+delBtn+'</td>';
+        '<td data-actions>'+assignBtn+dnsBtn+'<button class="btn small" data-edit-p="'+p.id+'">Редакт.</button> <button class="btn small danger" data-del="'+p.id+'">Удалить</button></td>';
       body.appendChild(tr);
     });
 
     body.querySelectorAll("[data-order-id]").forEach(inp=>{
       inp.addEventListener("change", ()=>{
         const p = getParticipant(inp.dataset.orderId);
-        if(!p || !can("setStartOrder")) return;
+        if(!p) return;
         let v = parseInt(inp.value,10);
         if(isNaN(v) || v<0) v = 0;
         p.startOrder = v;
@@ -646,23 +562,22 @@ const firebaseConfig = {
     });
 
     body.querySelectorAll("[data-assign]").forEach(btn=>{
-      btn.addEventListener("click", ()=>{ if(can("assignBib")) assignBib(btn.dataset.assign); });
+      btn.addEventListener("click", ()=>assignBib(btn.dataset.assign));
     });
 
     body.querySelectorAll("[data-dns]").forEach(btn=>{
-      btn.addEventListener("click", ()=>{ if(can("dns")) markDns(btn.dataset.dns); });
+      btn.addEventListener("click", ()=>markDns(btn.dataset.dns));
     });
     body.querySelectorAll("[data-undo-dns]").forEach(btn=>{
-      btn.addEventListener("click", ()=>{ if(can("dns")) unmarkDns(btn.dataset.undoDns); });
+      btn.addEventListener("click", ()=>unmarkDns(btn.dataset.undoDns));
     });
 
     body.querySelectorAll("[data-edit-p]").forEach(btn=>{
-      btn.addEventListener("click", ()=>{ if(can("editParticipant")) editParticipant(btn.dataset.editP); });
+      btn.addEventListener("click", ()=>editParticipant(btn.dataset.editP));
     });
 
     body.querySelectorAll("[data-del]").forEach(btn=>{
       btn.addEventListener("click", ()=>{
-        if(!can("deleteParticipant")) return;
         const p = getParticipant(btn.dataset.del);
         if(!p) return;
         const label = p.bib ? "№"+p.bib+" ("+p.name+")" : p.name+" (без номера)";
@@ -684,7 +599,6 @@ const firebaseConfig = {
   // Start tab: settings
   // ---------------------------------------------------------------
   document.getElementById("intervalInput").addEventListener("change", (e)=>{
-    if(!can("start")){ e.target.value = state.settings.intervalSec; return; }
     let v = parseInt(e.target.value,10);
     if(isNaN(v) || v < 5) v = 5;
     state.settings.intervalSec = v;
@@ -693,7 +607,6 @@ const firebaseConfig = {
   });
 
   document.getElementById("startModeToggle").addEventListener("click", (e)=>{
-    if(!can("start")) return;
     const btn = e.target.closest("button[data-startmode]");
     if(!btn) return;
     state.settings.startMode = btn.dataset.startmode;
@@ -749,7 +662,6 @@ const firebaseConfig = {
   }
 
   function toggleSelect(id){
-    if(!can("start")) return;
     // operator is taking manual control of the selection from here on
     state.selectedAuto = false;
     // free-form selection: any number of participants (1, 2, 3, or more)
@@ -775,7 +687,6 @@ const firebaseConfig = {
   }
 
   function doStart(){
-    if(!can("start")) return;
     if(state.selectedNextIds.length === 0){ showToast("Выберите участника(ов) для старта"); return; }
     const now = Date.now();
     state.selectedNextIds.forEach(id=>{
@@ -792,7 +703,6 @@ const firebaseConfig = {
   document.getElementById("btnBigStart").addEventListener("click", doStart);
 
   function finishParticipant(id){
-    if(!can("finish")) return false;
     const p = getParticipant(id);
     if(!p || p.status !== "racing"){ return false; }
     p.finishTime = Date.now();
@@ -803,7 +713,6 @@ const firebaseConfig = {
   }
 
   function revertStart(id){
-    if(!can("revertStart")) return;
     const p = getParticipant(id);
     if(!p || p.status !== "racing") return;
     p.startTime = null;
@@ -814,7 +723,6 @@ const firebaseConfig = {
   }
 
   function markDnf(id){
-    if(!can("dnf")) return;
     const p = getParticipant(id);
     if(!p || p.status !== "racing") return;
     p.status = "dnf";
@@ -824,7 +732,6 @@ const firebaseConfig = {
   }
 
   document.getElementById("btnQuickFinish").addEventListener("click", ()=>{
-    if(!can("finish")) return;
     const bib = document.getElementById("quickBibInput").value.trim();
     const msg = document.getElementById("quickFinishMsg");
     if(!bib){ msg.textContent = "Введите номер участника"; return; }
@@ -845,7 +752,6 @@ const firebaseConfig = {
   // Render: Start tab
   // ---------------------------------------------------------------
   function renderStartTab(){
-    document.getElementById("startSettingsCard").style.display = isAdmin() ? "" : "none";
     document.getElementById("intervalInput").value = state.settings.intervalSec;
     document.querySelectorAll("#startModeToggle button").forEach(b=>b.classList.toggle("active", b.dataset.startmode===state.settings.startMode));
     const waitingCountForLabel = waitingList().length;
@@ -893,13 +799,9 @@ const firebaseConfig = {
       chips.appendChild(chip);
     });
 
-    document.getElementById("btnBigStart").disabled = state.selectedNextIds.length === 0 || !can("start");
-  }
+    document.getElementById("btnBigStart").disabled = state.selectedNextIds.length === 0;
 
-  // ---------------------------------------------------------------
-  // On-course / finish tab
-  // ---------------------------------------------------------------
-  function renderOnCourseTab(){
+    // on-course list
     const oc = state.participants.filter(p=>p.status==="racing").sort((a,b)=>a.startTime-b.startTime);
     document.getElementById("onCourseCount").textContent = oc.length;
     const ocList = document.getElementById("onCourseList");
@@ -908,19 +810,19 @@ const firebaseConfig = {
     oc.forEach(p=>{
       const row = document.createElement("div");
       row.className = "oncourse-row";
-      const finishBtn = can("finish") ? '<button class="btn small primary" data-finish="'+p.id+'">Финиш</button>' : '';
-      const revertBtn = can("revertStart") ? '<button class="btn small" data-revert="'+p.id+'" title="Если запустили по ошибке">Вернуть на старт</button>' : '';
-      const dnfBtn = can("dnf") ? '<button class="btn small danger" data-dnf="'+p.id+'" title="Сошёл с дистанции">Сошёл</button>' : '';
       row.innerHTML =
         '<span class="bib mono">'+escapeHtml(p.bib)+'</span>'+
         '<span class="name">'+escapeHtml(p.name)+'</span>'+
         '<span class="elapsed mono" data-elapsed-for="'+p.id+'">--:--</span>'+
-        '<div class="oncourse-actions">'+finishBtn+revertBtn+dnfBtn+'</div>';
+        '<div class="oncourse-actions">'+
+          '<button class="btn small primary" data-finish="'+p.id+'">Финиш</button>'+
+          '<button class="btn small" data-revert="'+p.id+'" title="Если запустили по ошибке">Вернуть на старт</button>'+
+          '<button class="btn small danger" data-dnf="'+p.id+'" title="Сошёл с дистанции">Сошёл</button>'+
+        '</div>';
       ocList.appendChild(row);
     });
     ocList.querySelectorAll("[data-finish]").forEach(btn=>{
       btn.addEventListener("click", ()=>{
-        if(!can("finish")) return;
         const p = getParticipant(btn.dataset.finish);
         finishParticipant(btn.dataset.finish);
         showToast("Финиш: №"+p.bib+" — "+formatDuration(p.finishTime-p.startTime));
@@ -933,7 +835,6 @@ const firebaseConfig = {
     ocList.querySelectorAll("[data-dnf]").forEach(btn=>{
       btn.addEventListener("click", ()=>markDnf(btn.dataset.dnf));
     });
-    document.getElementById("btnQuickFinish").disabled = !can("finish");
   }
 
   // ---------------------------------------------------------------
@@ -961,49 +862,9 @@ const firebaseConfig = {
     return finished.sort((a,b)=>a._net-b._net);
   }
 
-  function renderProtocolTab(){
-    // ---- Ожидание (waiting), sorted by name ----
-    const waitingSorted = state.participants.filter(p=>p.status==="waiting").slice()
-      .sort((a,b)=>a.name.localeCompare(b.name,'ru'));
-    document.getElementById("protoWaitingCount").textContent = waitingSorted.length;
-    const wEl = document.getElementById("protoWaitingList");
-    wEl.innerHTML = "";
-    document.getElementById("protoWaitingEmpty").style.display = waitingSorted.length ? "none":"block";
-    waitingSorted.forEach(p=>{
-      const row = document.createElement("div");
-      row.className = "protocol-row waiting";
-      row.innerHTML = protocolRowHtml(p);
-      wEl.appendChild(row);
-    });
-
-    // ---- На дистанции (racing), sorted by name ----
-    const racingSorted = state.participants.filter(p=>p.status==="racing").slice()
-      .sort((a,b)=>a.name.localeCompare(b.name,'ru'));
-    document.getElementById("protoRacingCount").textContent = racingSorted.length;
-    const rEl = document.getElementById("protoRacingList");
-    rEl.innerHTML = "";
-    document.getElementById("protoRacingEmpty").style.display = racingSorted.length ? "none":"block";
-    racingSorted.forEach(p=>{
-      const row = document.createElement("div");
-      row.className = "protocol-row racing";
-      row.innerHTML = protocolRowHtml(p) + '<span class="elapsed" data-elapsed-for="'+p.id+'">--:--</span>';
-      rEl.appendChild(row);
-    });
-
-    // ---- Готовятся (checked by the start judge, next to launch) ----
-    const prepList = state.selectedNextIds.map(id=>getParticipant(id)).filter(Boolean);
-    const pEl = document.getElementById("protoPrepList");
-    pEl.innerHTML = "";
-    document.getElementById("protoPrepEmpty").style.display = prepList.length ? "none":"block";
-    prepList.forEach(p=>{
-      const row = document.createElement("div");
-      row.className = "protocol-row prep";
-      row.innerHTML = protocolRowHtml(p);
-      pEl.appendChild(row);
-    });
-
-    // ---- Онлайн результат (finished, sorted by net time; no start/finish columns) ----
+  function renderResultsTab(){
     const catFilter = document.getElementById("resultsCategoryFilter").value;
+    // when "all categories" is selected, rank across all categories combined
     let results = computeResults(!catFilter);
     if(catFilter) results = results.filter(p=>p.category===catFilter);
     const body = document.getElementById("resultsBody");
@@ -1017,34 +878,44 @@ const firebaseConfig = {
         '<td data-label="№"><span class="bib mono">'+escapeHtml(p.bib)+'</span></td>'+
         '<td data-label="Имя">'+escapeHtml(p.name)+'</td>'+
         '<td data-label="Категория"><span class="badge '+(p.category==="Велосипед"?"bike":"run")+'">'+escapeHtml(p.category)+'</span></td>'+
-        '<td data-label="Чистое время" class="mono" style="font-weight:800;">'+formatDuration(p._net)+'</td>';
+        '<td data-label="Старт" class="mono">'+formatClock(p.startTime)+'</td>'+
+        '<td data-label="Финиш" class="mono">'+formatClock(p.finishTime)+'</td>'+
+        '<td data-label="Чистое время" class="mono" style="font-weight:800;">'+formatDuration(p._net)+'</td>'+
+        '<td data-actions><button class="btn small" data-edit="'+p.id+'">Исправить</button></td>';
       body.appendChild(tr);
     });
+    body.querySelectorAll("[data-edit]").forEach(btn=>{
+      btn.addEventListener("click", ()=>openEditModal(btn.dataset.edit));
+    });
 
-    // ---- Не явились / сошли с дистанции (read-only here) ----
-    const dnsDnfList = state.participants.filter(p=>p.status==="dns" || p.status==="dnf");
-    document.getElementById("dnsDnfCard").style.display = dnsDnfList.length ? "block" : "none";
-    const ddBody = document.getElementById("dnsDnfBody");
-    ddBody.innerHTML = "";
-    dnsDnfList.forEach(p=>{
+    // DNF (сошли с дистанции) list
+    const dnfList = state.participants.filter(p=>p.status==="dnf");
+    document.getElementById("dnfCard").style.display = dnfList.length ? "block" : "none";
+    const dnfBody = document.getElementById("dnfBody");
+    dnfBody.innerHTML = "";
+    dnfList.forEach(p=>{
       const tr = document.createElement("tr");
       tr.innerHTML =
         '<td data-label="№"><span class="bib mono">'+escapeHtml(p.bib)+'</span></td>'+
         '<td data-label="Имя">'+escapeHtml(p.name)+'</td>'+
         '<td data-label="Категория"><span class="badge '+(p.category==="Велосипед"?"bike":"run")+'">'+escapeHtml(p.category)+'</span></td>'+
-        '<td data-label="Статус"><span class="badge '+statusBadgeClass(p.status)+'">'+statusLabel(p.status)+'</span></td>';
-      ddBody.appendChild(tr);
+        '<td data-label="Старт" class="mono">'+formatClock(p.startTime)+'</td>'+
+        '<td data-actions><button class="btn small" data-undo-dnf="'+p.id+'">Вернуть на старт</button></td>';
+      dnfBody.appendChild(tr);
     });
-
-    // admin-only reset control, shown right here for convenience
-    document.getElementById("adminResetCard").style.display = isAdmin() ? "block" : "none";
+    dnfBody.querySelectorAll("[data-undo-dnf]").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        const p = getParticipant(btn.dataset.undoDnf);
+        if(!p) return;
+        p.startTime = null;
+        p.status = "waiting"; // back to the start queue, not straight onto the course
+        saveState();
+        renderAll();
+        showToast("№"+p.bib+" возвращён в очередь на старт");
+      });
+    });
   }
-  function protocolRowHtml(p){
-    return '<span class="bib mono">'+escapeHtml(p.bib)+'</span>'+
-      '<span class="name">'+escapeHtml(p.name)+'</span>'+
-      '<span class="badge '+(p.category==="Велосипед"?"bike":"run")+'">'+escapeHtml(p.category)+'</span>';
-  }
-  document.getElementById("resultsCategoryFilter").addEventListener("change", renderProtocolTab);
+  document.getElementById("resultsCategoryFilter").addEventListener("change", renderResultsTab);
 
   // simple prompt-based time correction (kept dependency-free)
   function openEditModal(id){

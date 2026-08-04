@@ -1,6 +1,49 @@
 (function(){
   "use strict";
 
+  // =================================================================
+  // FIREBASE CONFIG — paste your own project's config object here.
+  // Get it from: Firebase Console → Project settings → General →
+  // "Your apps" → Web app → SDK setup and configuration.
+  // Leave the placeholder as-is to run in local-only (no sync) mode.
+  // =================================================================
+
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyBncAe5D5L41KZCBSfHb707t402g45s6m4",
+  authDomain: "app-racetimer.firebaseapp.com",
+  databaseURL: "https://app-racetimer-default-rtdb.firebaseio.com",
+  projectId: "app-racetimer",
+  storageBucket: "app-racetimer.firebasestorage.app",
+  messagingSenderId: "807387307953",
+  appId: "1:807387307953:web:0751a821578e1eb254a790",
+  measurementId: "G-3DYEP4T6J9"
+};
+  // =================================================================
+
+  let db = null, firebaseReady = false;
+  try{
+    if(window.firebase && FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.apiKey.indexOf("ВСТАВЬТЕ") === -1){
+      firebase.initializeApp(FIREBASE_CONFIG);
+      db = firebase.firestore();
+      firebaseReady = true;
+    }
+  }catch(e){
+    console.error("Firebase init failed", e);
+  }
+
+  const META_DOC = firebaseReady ? db.collection("racetimer_meta").doc("state") : null;
+  const PARTICIPANTS_COL = firebaseReady ? db.collection("racetimer_participants") : null;
+  let lastSyncedParticipants = {}; // id -> JSON snapshot, used to send only real changes
+  let syncInitialized = false;
+
+  function setSyncStatus(cls, title){
+    const el = document.getElementById("syncStatus");
+    if(!el) return;
+    el.className = "sync-status " + cls;
+    el.title = title;
+  }
+
   // ---------------------------------------------------------------
   // State
   // ---------------------------------------------------------------
@@ -19,11 +62,14 @@
   let state = loadState();
 
   function loadState(){
+    if(firebaseReady){
+      // real data arrives asynchronously via the realtime listeners below
+      return defaultState();
+    }
     try{
       const raw = localStorage.getItem(STORAGE_KEY);
       if(!raw) return defaultState();
       const parsed = JSON.parse(raw);
-      // shallow-merge with defaults to survive schema additions
       const d = defaultState();
       return Object.assign(d, parsed, {
         settings: Object.assign(d.settings, parsed.settings||{}),
@@ -36,12 +82,93 @@
   }
 
   function saveState(){
-    try{
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    }catch(e){
-      console.error("Failed to save state", e);
-      showToast("Ошибка сохранения данных!");
+    if(!firebaseReady){
+      try{
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      }catch(e){
+        console.error("Failed to save state", e);
+        showToast("Ошибка сохранения данных!");
+      }
+      return;
     }
+    setSyncStatus("online", "Синхронизация…");
+    const writes = [];
+    writes.push(META_DOC.set({
+      settings: state.settings,
+      countdown: state.countdown,
+      selectedNextIds: state.selectedNextIds,
+      selectedAuto: state.selectedAuto
+    }));
+    const currentIds = new Set();
+    state.participants.forEach(p=>{
+      currentIds.add(p.id);
+      const json = JSON.stringify(p);
+      if(lastSyncedParticipants[p.id] !== json){
+        writes.push(PARTICIPANTS_COL.doc(p.id).set(p));
+        lastSyncedParticipants[p.id] = json;
+      }
+    });
+    Object.keys(lastSyncedParticipants).forEach(id=>{
+      if(!currentIds.has(id)){
+        writes.push(PARTICIPANTS_COL.doc(id).delete());
+        delete lastSyncedParticipants[id];
+      }
+    });
+    Promise.all(writes).then(()=>{
+      setSyncStatus("online", "Синхронизировано");
+    }).catch(e=>{
+      console.error("Firestore save failed", e);
+      setSyncStatus("error", "Ошибка синхронизации — проверьте интернет");
+      showToast("Не удалось сохранить в облако — проверьте интернет");
+    });
+  }
+
+  function setupRealtimeSync(){
+    if(!firebaseReady){
+      setSyncStatus("offline", "Работает локально, без онлайн-синхронизации (Firebase не настроен)");
+      const banner = document.getElementById("syncBanner");
+      banner.style.display = "block";
+      banner.innerHTML = "Онлайн-синхронизация не настроена — данные видны только на этом устройстве. " +
+        "Чтобы включить общий доступ на нескольких устройствах, впишите свой Firebase config в начало файла со скриптом приложения.";
+      return;
+    }
+    setSyncStatus("offline", "Подключение…");
+
+    META_DOC.onSnapshot(function(snap){
+      if(snap.exists){
+        const data = snap.data();
+        state.settings = Object.assign(state.settings, data.settings||{});
+        state.countdown = Object.assign(state.countdown, data.countdown||{});
+        state.selectedNextIds = data.selectedNextIds || [];
+        state.selectedAuto = data.selectedAuto !== undefined ? data.selectedAuto : true;
+        applyTheme();
+      }
+      setSyncStatus("online", "Онлайн — изменения видны всем устройствам");
+      renderAll();
+    }, function(err){
+      console.error("meta snapshot error", err);
+      setSyncStatus("error", "Ошибка подключения к базе — проверьте интернет и настройки доступа");
+      showToast("Ошибка синхронизации: " + err.message);
+    });
+
+    PARTICIPANTS_COL.onSnapshot(function(snap){
+      snap.docChanges().forEach(function(change){
+        const p = change.doc.data();
+        if(change.type === "removed"){
+          state.participants = state.participants.filter(function(x){ return x.id!==p.id; });
+          delete lastSyncedParticipants[p.id];
+        } else {
+          const idx = state.participants.findIndex(function(x){ return x.id===p.id; });
+          if(idx>=0) state.participants[idx] = p; else state.participants.push(p);
+          lastSyncedParticipants[p.id] = JSON.stringify(p);
+        }
+      });
+      renderAll();
+    }, function(err){
+      console.error("participants snapshot error", err);
+      setSyncStatus("error", "Ошибка подключения к базе — проверьте интернет и настройки доступа");
+      showToast("Ошибка синхронизации: " + err.message);
+    });
   }
 
   function uid(){
@@ -1155,5 +1282,6 @@
 
   applyTheme();
   renderAll();
+  setupRealtimeSync();
 
 })();

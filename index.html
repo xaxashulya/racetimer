@@ -3,9 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>RaceTimer — хронометраж вертикального забега</title>
+<title>RaceTimer Online — хронометраж вертикального забега</title>
 <link rel="stylesheet" href="css/style.css">
-
+<script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
 <svg id="contours" viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
@@ -35,9 +36,12 @@
       <button data-tab="start">Старт</button>
       <button data-tab="results">Результаты</button>
     </nav>
+    <span id="syncStatus" class="sync-status" title="Статус синхронизации">●</span>
     <div class="clock mono" id="headerClock">--:--:--</div>
     <button class="icon-btn" id="themeToggle" title="Тема">🌓</button>
   </header>
+
+  <div id="syncBanner" class="sync-banner" style="display:none;"></div>
 
   <main>
 

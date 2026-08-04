@@ -51,6 +51,16 @@
 
   .clock{font-size:20px; font-weight:700; padding:6px 12px; border:1px solid var(--border); border-radius:8px; background:var(--bg-card);}
 
+  .sync-status{font-size:14px; line-height:1; cursor:default;}
+  .sync-status.online{color:var(--success);}
+  .sync-status.offline{color:var(--text-faint);}
+  .sync-status.error{color:var(--danger);}
+  .sync-banner{
+    background:rgba(255,90,31,.12); border-bottom:1px solid var(--accent); color:var(--text);
+    font-size:13px; padding:10px 18px; text-align:center;
+  }
+  .sync-banner a{color:var(--accent); font-weight:700;}
+
   .icon-btn{
     border:1px solid var(--border); background:var(--bg-card); color:var(--text); width:38px; height:38px;
     border-radius:8px; cursor:pointer; font-size:16px; display:flex; align-items:center; justify-content:center;

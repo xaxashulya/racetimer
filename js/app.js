@@ -7,7 +7,7 @@
   // "Your apps" → Web app → SDK setup and configuration.
   // Leave the placeholder as-is to run in local-only (no sync) mode.
   // =================================================================
-const firebaseConfig = {
+const firebase_Config = {
   apiKey: "AIzaSyBncAe5D5L41KZCBSfHb707t402g45s6m4",
   authDomain: "app-racetimer.firebaseapp.com",
   databaseURL: "https://app-racetimer-default-rtdb.firebaseio.com",

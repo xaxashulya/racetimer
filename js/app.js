@@ -42,6 +42,80 @@ const FIREBASE_CONFIG = {
     el.title = title;
   }
 
+  // =================================================================
+  // ROLES — change these passwords to your own. Anyone who knows a
+  // password can unlock that role in the dropdown at the top of the
+  // page. This is a simple deterrent, not real security — don't use
+  // it to protect anything sensitive.
+  // =================================================================
+  const ROLE_PASSWORDS = {
+    startJudge: "start",
+    finishJudge: "finish",
+    admin: "admin"
+  };
+  const ROLE_LABELS = {
+    guest: "Обычный пользователь",
+    startJudge: "Судья старт",
+    finishJudge: "Судья финиш",
+    admin: "Суперпользователь"
+  };
+  const ROLE_PERMS = {
+    guest:       { tabs: ["protocol"], actions: {} },
+    startJudge:  { tabs: ["protocol","participants","start","oncourse"],
+                   actions: { start:true, revertStart:true, dns:true, addParticipant:true, assignBib:true, setStartOrder:true } },
+    finishJudge: { tabs: ["protocol","oncourse"],
+                   actions: { finish:true, revertStart:true, dnf:true } },
+    admin:       { tabs: ["protocol","participants","start","oncourse"], actions: { all:true } }
+  };
+  let currentRole = "guest";
+
+  function can(action){
+    const perms = ROLE_PERMS[currentRole];
+    if(!perms) return false;
+    return !!(perms.actions.all || perms.actions[action]);
+  }
+  function tabAllowed(tabId){
+    const perms = ROLE_PERMS[currentRole];
+    return !!(perms && perms.tabs.indexOf(tabId) !== -1);
+  }
+  function isAdmin(){ return currentRole === "admin"; }
+
+  function applyRoleUI(){
+    // show/hide nav tab buttons the current role isn't allowed to see
+    document.querySelectorAll("nav.tabs button[data-tab]").forEach(btn=>{
+      const allowed = tabAllowed(btn.dataset.tab);
+      btn.style.display = allowed ? "" : "none";
+    });
+    // if the currently active tab is no longer allowed, fall back to Протокол
+    const activeBtn = document.querySelector("nav.tabs button.active");
+    if(activeBtn && !tabAllowed(activeBtn.dataset.tab)){
+      const fallback = document.querySelector('nav.tabs button[data-tab="protocol"]');
+      document.querySelectorAll("nav.tabs button").forEach(b=>b.classList.toggle("active", b===fallback));
+      document.querySelectorAll("section.tab").forEach(s=>s.classList.toggle("active", s.id === "tab-protocol"));
+    }
+    document.getElementById("roleSelect").value = currentRole;
+    renderAll();
+  }
+
+  document.getElementById("roleSelect").addEventListener("change", (e)=>{
+    const wanted = e.target.value;
+    if(wanted === "guest" || wanted === currentRole){
+      currentRole = wanted;
+      applyRoleUI();
+      return;
+    }
+    const pass = prompt("Пароль для роли «" + ROLE_LABELS[wanted] + "»:");
+    if(pass === null){ e.target.value = currentRole; return; }
+    if(pass === ROLE_PASSWORDS[wanted]){
+      currentRole = wanted;
+      showToast("Роль: " + ROLE_LABELS[wanted]);
+      applyRoleUI();
+    } else {
+      alert("Неверный пароль");
+      e.target.value = currentRole;
+    }
+  });
+
   // ---------------------------------------------------------------
   // State
   // ---------------------------------------------------------------
@@ -258,7 +332,7 @@ const FIREBASE_CONFIG = {
   // ---------------------------------------------------------------
   document.getElementById("tabs").addEventListener("click", (e)=>{
     const btn = e.target.closest("button[data-tab]");
-    if(!btn) return;
+    if(!btn || !tabAllowed(btn.dataset.tab)) return;
     document.querySelectorAll("nav.tabs button").forEach(b=>b.classList.toggle("active", b===btn));
     document.querySelectorAll("section.tab").forEach(s=>s.classList.toggle("active", s.id === "tab-"+btn.dataset.tab));
     renderAll();
@@ -436,6 +510,7 @@ const FIREBASE_CONFIG = {
   }
 
   document.getElementById("btnImportCsv").addEventListener("click", ()=>{
+    if(!can("importCsv")) return;
     const fileInput = document.getElementById("csvFile");
     const file = fileInput.files && fileInput.files[0];
     const statusEl = document.getElementById("importStatus");
@@ -455,6 +530,7 @@ const FIREBASE_CONFIG = {
   });
 
   document.getElementById("btnExportParticipants").addEventListener("click", ()=>{
+    if(!can("importCsv")) return;
     if(!state.participants.length){ showToast("Список участников пуст — нечего экспортировать"); return; }
     const header = ["bib","name","category","gender","agegroup","status"];
     const lines = [header.join(",")];
@@ -469,6 +545,7 @@ const FIREBASE_CONFIG = {
   // Add participant form
   // ---------------------------------------------------------------
   document.getElementById("btnAddParticipant").addEventListener("click", ()=>{
+    if(!can("addParticipant")) return;
     const bib = document.getElementById("addBib").value;
     const name = document.getElementById("addName").value;
     const category = document.getElementById("addCategory").value;
@@ -511,6 +588,9 @@ const FIREBASE_CONFIG = {
     const catFilter = document.getElementById("categoryFilter").value;
     const body = document.getElementById("participantsBody");
     body.innerHTML = "";
+
+    document.getElementById("csvCard").style.display = can("importCsv") ? "" : "none";
+
     let list = state.participants.slice().sort((a,b)=>{
       const aHas = !!a.bib, bHas = !!b.bib;
       if(aHas && bHas) return (a.bib.length-b.bib.length) || a.bib.localeCompare(b.bib,'ru',{numeric:true});
@@ -527,16 +607,22 @@ const FIREBASE_CONFIG = {
       const bibCell = p.bib
         ? '<span class="bib mono">'+escapeHtml(p.bib)+'</span>'
         : '<span style="color:var(--text-faint);">—</span>';
-      const assignBtn = p.status === "preregistered"
+      const assignBtn = (p.status === "preregistered" && can("assignBib"))
         ? '<button class="btn small primary" data-assign="'+p.id+'">Выдать номер</button> '
         : '';
-      const dnsBtn = p.status === "waiting"
-        ? '<button class="btn small" data-dns="'+p.id+'">Не явился</button> '
-        : (p.status === "dns" ? '<button class="btn small primary" data-undo-dns="'+p.id+'">Вернуть в очередь</button> ' : '');
-      const orderEditable = (p.status === "waiting" || p.status === "dns");
+      let dnsBtn = "";
+      if(can("dns")){
+        if(p.status === "waiting") dnsBtn = '<button class="btn small" data-dns="'+p.id+'">Не явился</button> ';
+        else if(p.status === "dns") dnsBtn = '<button class="btn small primary" data-undo-dns="'+p.id+'">Вернуть в очередь</button> ';
+      }
+      const orderEditable = (p.status === "waiting" || p.status === "dns") && can("setStartOrder");
       const orderCell = orderEditable
         ? '<input type="number" class="startorder-input mono" min="0" step="1" value="'+(p.startOrder||0)+'" data-order-id="'+p.id+'">'
-        : '<span style="color:var(--text-faint);">—</span>';
+        : (p.startOrder ? String(p.startOrder) : '<span style="color:var(--text-faint);">—</span>');
+      const editBtn = can("editParticipant") ? '<button class="btn small" data-edit-p="'+p.id+'">Редакт.</button> ' : '';
+      const timeBtn = (can("editParticipant") && (p.status==="racing"||p.status==="finished"||p.status==="dnf"))
+        ? '<button class="btn small" data-edit-time="'+p.id+'">Время</button> ' : '';
+      const delBtn = can("deleteParticipant") ? '<button class="btn small danger" data-del="'+p.id+'">Удалить</button>' : '';
       tr.innerHTML =
         '<td data-label="№">'+bibCell+'</td>'+
         '<td data-label="Имя">'+escapeHtml(p.name)+'</td>'+
@@ -545,14 +631,14 @@ const FIREBASE_CONFIG = {
         '<td data-label="Группа">'+escapeHtml(p.ageGroup||"—")+'</td>'+
         '<td data-label="Оч. старта">'+orderCell+'</td>'+
         '<td data-label="Статус"><span class="badge '+statusBadgeClass(p.status)+'">'+statusLabel(p.status)+'</span></td>'+
-        '<td data-actions>'+assignBtn+dnsBtn+'<button class="btn small" data-edit-p="'+p.id+'">Редакт.</button> <button class="btn small danger" data-del="'+p.id+'">Удалить</button></td>';
+        '<td data-actions>'+assignBtn+dnsBtn+editBtn+timeBtn+delBtn+'</td>';
       body.appendChild(tr);
     });
 
     body.querySelectorAll("[data-order-id]").forEach(inp=>{
       inp.addEventListener("change", ()=>{
         const p = getParticipant(inp.dataset.orderId);
-        if(!p) return;
+        if(!p || !can("setStartOrder")) return;
         let v = parseInt(inp.value,10);
         if(isNaN(v) || v<0) v = 0;
         p.startOrder = v;
@@ -562,22 +648,27 @@ const FIREBASE_CONFIG = {
     });
 
     body.querySelectorAll("[data-assign]").forEach(btn=>{
-      btn.addEventListener("click", ()=>assignBib(btn.dataset.assign));
+      btn.addEventListener("click", ()=>{ if(can("assignBib")) assignBib(btn.dataset.assign); });
     });
 
     body.querySelectorAll("[data-dns]").forEach(btn=>{
-      btn.addEventListener("click", ()=>markDns(btn.dataset.dns));
+      btn.addEventListener("click", ()=>{ if(can("dns")) markDns(btn.dataset.dns); });
     });
     body.querySelectorAll("[data-undo-dns]").forEach(btn=>{
-      btn.addEventListener("click", ()=>unmarkDns(btn.dataset.undoDns));
+      btn.addEventListener("click", ()=>{ if(can("dns")) unmarkDns(btn.dataset.undoDns); });
     });
 
     body.querySelectorAll("[data-edit-p]").forEach(btn=>{
-      btn.addEventListener("click", ()=>editParticipant(btn.dataset.editP));
+      btn.addEventListener("click", ()=>{ if(can("editParticipant")) editParticipant(btn.dataset.editP); });
+    });
+
+    body.querySelectorAll("[data-edit-time]").forEach(btn=>{
+      btn.addEventListener("click", ()=>{ if(can("editParticipant")) openEditModal(btn.dataset.editTime); });
     });
 
     body.querySelectorAll("[data-del]").forEach(btn=>{
       btn.addEventListener("click", ()=>{
+        if(!can("deleteParticipant")) return;
         const p = getParticipant(btn.dataset.del);
         if(!p) return;
         const label = p.bib ? "№"+p.bib+" ("+p.name+")" : p.name+" (без номера)";
@@ -599,6 +690,7 @@ const FIREBASE_CONFIG = {
   // Start tab: settings
   // ---------------------------------------------------------------
   document.getElementById("intervalInput").addEventListener("change", (e)=>{
+    if(!can("start")){ e.target.value = state.settings.intervalSec; return; }
     let v = parseInt(e.target.value,10);
     if(isNaN(v) || v < 5) v = 5;
     state.settings.intervalSec = v;
@@ -607,6 +699,7 @@ const FIREBASE_CONFIG = {
   });
 
   document.getElementById("startModeToggle").addEventListener("click", (e)=>{
+    if(!can("start")) return;
     const btn = e.target.closest("button[data-startmode]");
     if(!btn) return;
     state.settings.startMode = btn.dataset.startmode;
@@ -662,6 +755,7 @@ const FIREBASE_CONFIG = {
   }
 
   function toggleSelect(id){
+    if(!can("start")) return;
     // operator is taking manual control of the selection from here on
     state.selectedAuto = false;
     // free-form selection: any number of participants (1, 2, 3, or more)
@@ -687,6 +781,7 @@ const FIREBASE_CONFIG = {
   }
 
   function doStart(){
+    if(!can("start")) return;
     if(state.selectedNextIds.length === 0){ showToast("Выберите участника(ов) для старта"); return; }
     const now = Date.now();
     state.selectedNextIds.forEach(id=>{
@@ -703,6 +798,7 @@ const FIREBASE_CONFIG = {
   document.getElementById("btnBigStart").addEventListener("click", doStart);
 
   function finishParticipant(id){
+    if(!can("finish")) return false;
     const p = getParticipant(id);
     if(!p || p.status !== "racing"){ return false; }
     p.finishTime = Date.now();
@@ -713,6 +809,7 @@ const FIREBASE_CONFIG = {
   }
 
   function revertStart(id){
+    if(!can("revertStart")) return;
     const p = getParticipant(id);
     if(!p || p.status !== "racing") return;
     p.startTime = null;
@@ -723,6 +820,7 @@ const FIREBASE_CONFIG = {
   }
 
   function markDnf(id){
+    if(!can("dnf")) return;
     const p = getParticipant(id);
     if(!p || p.status !== "racing") return;
     p.status = "dnf";
@@ -732,6 +830,7 @@ const FIREBASE_CONFIG = {
   }
 
   document.getElementById("btnQuickFinish").addEventListener("click", ()=>{
+    if(!can("finish")) return;
     const bib = document.getElementById("quickBibInput").value.trim();
     const msg = document.getElementById("quickFinishMsg");
     if(!bib){ msg.textContent = "Введите номер участника"; return; }
@@ -752,6 +851,7 @@ const FIREBASE_CONFIG = {
   // Render: Start tab
   // ---------------------------------------------------------------
   function renderStartTab(){
+    document.getElementById("startSettingsCard").style.display = isAdmin() ? "" : "none";
     document.getElementById("intervalInput").value = state.settings.intervalSec;
     document.querySelectorAll("#startModeToggle button").forEach(b=>b.classList.toggle("active", b.dataset.startmode===state.settings.startMode));
     const waitingCountForLabel = waitingList().length;
@@ -799,9 +899,13 @@ const FIREBASE_CONFIG = {
       chips.appendChild(chip);
     });
 
-    document.getElementById("btnBigStart").disabled = state.selectedNextIds.length === 0;
+    document.getElementById("btnBigStart").disabled = state.selectedNextIds.length === 0 || !can("start");
+  }
 
-    // on-course list
+  // ---------------------------------------------------------------
+  // On-course / finish tab
+  // ---------------------------------------------------------------
+  function renderOnCourseTab(){
     const oc = state.participants.filter(p=>p.status==="racing").sort((a,b)=>a.startTime-b.startTime);
     document.getElementById("onCourseCount").textContent = oc.length;
     const ocList = document.getElementById("onCourseList");
@@ -810,19 +914,19 @@ const FIREBASE_CONFIG = {
     oc.forEach(p=>{
       const row = document.createElement("div");
       row.className = "oncourse-row";
+      const finishBtn = can("finish") ? '<button class="btn small primary" data-finish="'+p.id+'">Финиш</button>' : '';
+      const revertBtn = can("revertStart") ? '<button class="btn small" data-revert="'+p.id+'" title="Если запустили по ошибке">Вернуть на старт</button>' : '';
+      const dnfBtn = can("dnf") ? '<button class="btn small danger" data-dnf="'+p.id+'" title="Сошёл с дистанции">Сошёл</button>' : '';
       row.innerHTML =
         '<span class="bib mono">'+escapeHtml(p.bib)+'</span>'+
         '<span class="name">'+escapeHtml(p.name)+'</span>'+
         '<span class="elapsed mono" data-elapsed-for="'+p.id+'">--:--</span>'+
-        '<div class="oncourse-actions">'+
-          '<button class="btn small primary" data-finish="'+p.id+'">Финиш</button>'+
-          '<button class="btn small" data-revert="'+p.id+'" title="Если запустили по ошибке">Вернуть на старт</button>'+
-          '<button class="btn small danger" data-dnf="'+p.id+'" title="Сошёл с дистанции">Сошёл</button>'+
-        '</div>';
+        '<div class="oncourse-actions">'+finishBtn+revertBtn+dnfBtn+'</div>';
       ocList.appendChild(row);
     });
     ocList.querySelectorAll("[data-finish]").forEach(btn=>{
       btn.addEventListener("click", ()=>{
+        if(!can("finish")) return;
         const p = getParticipant(btn.dataset.finish);
         finishParticipant(btn.dataset.finish);
         showToast("Финиш: №"+p.bib+" — "+formatDuration(p.finishTime-p.startTime));
@@ -834,6 +938,35 @@ const FIREBASE_CONFIG = {
     });
     ocList.querySelectorAll("[data-dnf]").forEach(btn=>{
       btn.addEventListener("click", ()=>markDnf(btn.dataset.dnf));
+    });
+    document.getElementById("btnQuickFinish").disabled = !can("finish");
+
+    // DNF (сошли с дистанции) — undo lives here, close to where it happened
+    const dnfList = state.participants.filter(p=>p.status==="dnf");
+    document.getElementById("oncourseDnfCard").style.display = dnfList.length ? "block" : "none";
+    const dnfBody = document.getElementById("oncourseDnfBody");
+    dnfBody.innerHTML = "";
+    dnfList.forEach(p=>{
+      const tr = document.createElement("tr");
+      const undoBtn = can("dnf") ? '<button class="btn small" data-undo-dnf="'+p.id+'">Вернуть на старт</button>' : '';
+      tr.innerHTML =
+        '<td data-label="№"><span class="bib mono">'+escapeHtml(p.bib)+'</span></td>'+
+        '<td data-label="Имя">'+escapeHtml(p.name)+'</td>'+
+        '<td data-label="Категория"><span class="badge '+(p.category==="Велосипед"?"bike":"run")+'">'+escapeHtml(p.category)+'</span></td>'+
+        '<td data-actions>'+undoBtn+'</td>';
+      dnfBody.appendChild(tr);
+    });
+    dnfBody.querySelectorAll("[data-undo-dnf]").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        if(!can("dnf")) return;
+        const p = getParticipant(btn.dataset.undoDnf);
+        if(!p) return;
+        p.startTime = null;
+        p.status = "waiting"; // back to the start queue, not straight onto the course
+        saveState();
+        renderAll();
+        showToast("№"+p.bib+" возвращён в очередь на старт");
+      });
     });
   }
 
@@ -862,9 +995,49 @@ const FIREBASE_CONFIG = {
     return finished.sort((a,b)=>a._net-b._net);
   }
 
-  function renderResultsTab(){
+  function renderProtocolTab(){
+    // ---- Ожидание (waiting), sorted by name ----
+    const waitingSorted = state.participants.filter(p=>p.status==="waiting").slice()
+      .sort((a,b)=>a.name.localeCompare(b.name,'ru'));
+    document.getElementById("protoWaitingCount").textContent = waitingSorted.length;
+    const wEl = document.getElementById("protoWaitingList");
+    wEl.innerHTML = "";
+    document.getElementById("protoWaitingEmpty").style.display = waitingSorted.length ? "none":"block";
+    waitingSorted.forEach(p=>{
+      const row = document.createElement("div");
+      row.className = "protocol-row waiting";
+      row.innerHTML = protocolRowHtml(p);
+      wEl.appendChild(row);
+    });
+
+    // ---- На дистанции (racing), sorted by name ----
+    const racingSorted = state.participants.filter(p=>p.status==="racing").slice()
+      .sort((a,b)=>a.name.localeCompare(b.name,'ru'));
+    document.getElementById("protoRacingCount").textContent = racingSorted.length;
+    const rEl = document.getElementById("protoRacingList");
+    rEl.innerHTML = "";
+    document.getElementById("protoRacingEmpty").style.display = racingSorted.length ? "none":"block";
+    racingSorted.forEach(p=>{
+      const row = document.createElement("div");
+      row.className = "protocol-row racing";
+      row.innerHTML = protocolRowHtml(p) + '<span class="elapsed" data-elapsed-for="'+p.id+'">--:--</span>';
+      rEl.appendChild(row);
+    });
+
+    // ---- Готовятся (checked by the start judge, next to launch) ----
+    const prepList = state.selectedNextIds.map(id=>getParticipant(id)).filter(Boolean);
+    const pEl = document.getElementById("protoPrepList");
+    pEl.innerHTML = "";
+    document.getElementById("protoPrepEmpty").style.display = prepList.length ? "none":"block";
+    prepList.forEach(p=>{
+      const row = document.createElement("div");
+      row.className = "protocol-row prep";
+      row.innerHTML = protocolRowHtml(p);
+      pEl.appendChild(row);
+    });
+
+    // ---- Онлайн результат (finished, sorted by net time; no start/finish columns) ----
     const catFilter = document.getElementById("resultsCategoryFilter").value;
-    // when "all categories" is selected, rank across all categories combined
     let results = computeResults(!catFilter);
     if(catFilter) results = results.filter(p=>p.category===catFilter);
     const body = document.getElementById("resultsBody");
@@ -878,44 +1051,34 @@ const FIREBASE_CONFIG = {
         '<td data-label="№"><span class="bib mono">'+escapeHtml(p.bib)+'</span></td>'+
         '<td data-label="Имя">'+escapeHtml(p.name)+'</td>'+
         '<td data-label="Категория"><span class="badge '+(p.category==="Велосипед"?"bike":"run")+'">'+escapeHtml(p.category)+'</span></td>'+
-        '<td data-label="Старт" class="mono">'+formatClock(p.startTime)+'</td>'+
-        '<td data-label="Финиш" class="mono">'+formatClock(p.finishTime)+'</td>'+
-        '<td data-label="Чистое время" class="mono" style="font-weight:800;">'+formatDuration(p._net)+'</td>'+
-        '<td data-actions><button class="btn small" data-edit="'+p.id+'">Исправить</button></td>';
+        '<td data-label="Чистое время" class="mono" style="font-weight:800;">'+formatDuration(p._net)+'</td>';
       body.appendChild(tr);
     });
-    body.querySelectorAll("[data-edit]").forEach(btn=>{
-      btn.addEventListener("click", ()=>openEditModal(btn.dataset.edit));
-    });
 
-    // DNF (сошли с дистанции) list
-    const dnfList = state.participants.filter(p=>p.status==="dnf");
-    document.getElementById("dnfCard").style.display = dnfList.length ? "block" : "none";
-    const dnfBody = document.getElementById("dnfBody");
-    dnfBody.innerHTML = "";
-    dnfList.forEach(p=>{
+    // ---- Не явились / сошли с дистанции (read-only here) ----
+    const dnsDnfList = state.participants.filter(p=>p.status==="dns" || p.status==="dnf");
+    document.getElementById("dnsDnfCard").style.display = dnsDnfList.length ? "block" : "none";
+    const ddBody = document.getElementById("dnsDnfBody");
+    ddBody.innerHTML = "";
+    dnsDnfList.forEach(p=>{
       const tr = document.createElement("tr");
       tr.innerHTML =
         '<td data-label="№"><span class="bib mono">'+escapeHtml(p.bib)+'</span></td>'+
         '<td data-label="Имя">'+escapeHtml(p.name)+'</td>'+
         '<td data-label="Категория"><span class="badge '+(p.category==="Велосипед"?"bike":"run")+'">'+escapeHtml(p.category)+'</span></td>'+
-        '<td data-label="Старт" class="mono">'+formatClock(p.startTime)+'</td>'+
-        '<td data-actions><button class="btn small" data-undo-dnf="'+p.id+'">Вернуть на старт</button></td>';
-      dnfBody.appendChild(tr);
+        '<td data-label="Статус"><span class="badge '+statusBadgeClass(p.status)+'">'+statusLabel(p.status)+'</span></td>';
+      ddBody.appendChild(tr);
     });
-    dnfBody.querySelectorAll("[data-undo-dnf]").forEach(btn=>{
-      btn.addEventListener("click", ()=>{
-        const p = getParticipant(btn.dataset.undoDnf);
-        if(!p) return;
-        p.startTime = null;
-        p.status = "waiting"; // back to the start queue, not straight onto the course
-        saveState();
-        renderAll();
-        showToast("№"+p.bib+" возвращён в очередь на старт");
-      });
-    });
+
+    // admin-only reset control, shown right here for convenience
+    document.getElementById("adminResetCard").style.display = isAdmin() ? "block" : "none";
   }
-  document.getElementById("resultsCategoryFilter").addEventListener("change", renderResultsTab);
+  function protocolRowHtml(p){
+    return '<span class="bib mono">'+escapeHtml(p.bib)+'</span>'+
+      '<span class="name">'+escapeHtml(p.name)+'</span>'+
+      '<span class="badge '+(p.category==="Велосипед"?"bike":"run")+'">'+escapeHtml(p.category)+'</span>';
+  }
+  document.getElementById("resultsCategoryFilter").addEventListener("change", renderProtocolTab);
 
   // simple prompt-based time correction (kept dependency-free)
   function openEditModal(id){
@@ -983,9 +1146,9 @@ const FIREBASE_CONFIG = {
 
     // ---- Sheet 1: "Общая" — everyone together, no category split ----
     const header1 = ["Место","Номер","Имя","Категория","Пол","Старт","Финиш","Чистое время"];
-    const sheet1Rows = [header1];
+    const sheet1Rows = [{header:true, cells: header1}];
     overallResults.forEach(p=>{
-      sheet1Rows.push([p._place, p.bib, p.name, p.category, p.gender, formatClock(p.startTime), formatClock(p.finishTime), formatDuration(p._net)]);
+      sheet1Rows.push({cells: [p._place, p.bib, p.name, p.category, p.gender, formatClock(p.startTime), formatClock(p.finishTime), formatDuration(p._net)]});
     });
 
     // ---- Sheet 2: "По категориям" — split by discipline + gender, own place per group ----
@@ -997,15 +1160,15 @@ const FIREBASE_CONFIG = {
       genders.forEach(gen=>{
         const group = overallResults.filter(p=>p.category===cat && p.gender===gen).slice().sort((a,b)=>a._net-b._net);
         if(!group.length) return;
-        sheet2Rows.push([cat+" — "+gen]);
-        sheet2Rows.push(groupHeader);
+        sheet2Rows.push({title:true, cells: [cat+" — "+gen]});
+        sheet2Rows.push({header:true, cells: groupHeader});
         group.forEach((p,i)=>{
-          sheet2Rows.push([i+1, p.bib, p.name, formatClock(p.startTime), formatClock(p.finishTime), formatDuration(p._net)]);
+          sheet2Rows.push({cells: [i+1, p.bib, p.name, formatClock(p.startTime), formatClock(p.finishTime), formatDuration(p._net)]});
         });
-        sheet2Rows.push([]);
+        sheet2Rows.push({cells: []}); // blank spacer row
       });
     });
-    if(!sheet2Rows.length) sheet2Rows.push(["Нет данных"]);
+    if(!sheet2Rows.length) sheet2Rows.push({cells: ["Нет данных"]});
 
     const blob = buildXlsxBlob([
       {name:"Общая", rows: sheet1Rows},
@@ -1022,7 +1185,9 @@ const FIREBASE_CONFIG = {
   // ---------------------------------------------------------------
   // Minimal dependency-free .xlsx (OOXML) writer — no external
   // libraries, works fully offline. Builds a real multi-sheet
-  // workbook using an uncompressed (STORED) ZIP container.
+  // workbook using an uncompressed (STORED) ZIP container, with
+  // auto-sized columns, thin borders on every data cell, and a
+  // styled (bold, filled) header row.
   // ---------------------------------------------------------------
   function xmlEscape(s){
     return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
@@ -1036,35 +1201,98 @@ const FIREBASE_CONFIG = {
     }
     return s;
   }
-  function buildSheetXml(rows){
+  // style indices, must match the cellXfs order defined in buildStylesXml()
+  const XLSX_STYLE = { normal:0, header:1, bordered:2, title:3 };
+
+  function buildSheetXml(rowsSpec){
     let rowsXml = "";
-    rows.forEach((row, ri)=>{
+    const colMaxLen = [];
+    rowsSpec.forEach((rowSpec, ri)=>{
       const rNum = ri+1;
+      const cells = rowSpec.cells || [];
+      const styleIdx = rowSpec.header ? XLSX_STYLE.header : (rowSpec.title ? XLSX_STYLE.title : XLSX_STYLE.bordered);
       let cellsXml = "";
-      row.forEach((val, ci)=>{
-        if(val === null || val === undefined || val === ""){ return; }
+      // still draw bordered cells across the full row width even where a sheet
+      // has short rows (e.g. title rows), so the grid looks even
+      const rowWidth = Math.max(cells.length, rowSpec.title ? 1 : 0);
+      for(let ci=0; ci<rowWidth; ci++){
+        const val = cells[ci];
+        const strLen = (val===null||val===undefined) ? 0 : String(val).length;
+        colMaxLen[ci] = Math.max(colMaxLen[ci]||0, strLen);
         const ref = colLetter(ci+1)+rNum;
-        if(typeof val === "number" && isFinite(val)){
-          cellsXml += '<c r="'+ref+'"><v>'+val+'</v></c>';
-        } else {
-          cellsXml += '<c r="'+ref+'" t="inlineStr"><is><t xml:space="preserve">'+xmlEscape(val)+'</t></is></c>';
+        if(val === null || val === undefined || val === ""){
+          if(!rowSpec.title) cellsXml += '<c r="'+ref+'" s="'+styleIdx+'"/>';
+          continue;
         }
-      });
+        if(typeof val === "number" && isFinite(val)){
+          cellsXml += '<c r="'+ref+'" s="'+styleIdx+'"><v>'+val+'</v></c>';
+        } else {
+          cellsXml += '<c r="'+ref+'" s="'+styleIdx+'" t="inlineStr"><is><t xml:space="preserve">'+xmlEscape(val)+'</t></is></c>';
+        }
+      }
       rowsXml += '<row r="'+rNum+'">'+cellsXml+'</row>';
     });
+
+    const colsXml = colMaxLen.length
+      ? '<cols>' + colMaxLen.map((len,i)=>{
+          const width = Math.min(42, Math.max(8, len + 3));
+          return '<col min="'+(i+1)+'" max="'+(i+1)+'" width="'+width+'" customWidth="1"/>';
+        }).join('') + '</cols>'
+      : '';
+
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
       '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'+
-      '<sheetData>'+rowsXml+'</sheetData></worksheet>';
+      '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" state="frozen"/></sheetView></sheetViews>'+
+      colsXml +
+      '<sheetData>'+rowsXml+'</sheetData>'+
+      '</worksheet>';
   }
+
+  function buildStylesXml(){
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+      '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'+
+        '<fonts count="3">'+
+          '<font><sz val="11"/><name val="Calibri"/></font>'+
+          '<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>'+
+          '<font><b/><sz val="11"/><name val="Calibri"/></font>'+
+        '</fonts>'+
+        '<fills count="3">'+
+          '<fill><patternFill patternType="none"/></fill>'+
+          '<fill><patternFill patternType="gray125"/></fill>'+
+          '<fill><patternFill patternType="solid"><fgColor rgb="FFFF5A1F"/><bgColor indexed="64"/></patternFill></fill>'+
+        '</fills>'+
+        '<borders count="2">'+
+          '<border><left/><right/><top/><bottom/><diagonal/></border>'+
+          '<border>'+
+            '<left style="thin"><color rgb="FFC9C9C9"/></left>'+
+            '<right style="thin"><color rgb="FFC9C9C9"/></right>'+
+            '<top style="thin"><color rgb="FFC9C9C9"/></top>'+
+            '<bottom style="thin"><color rgb="FFC9C9C9"/></bottom>'+
+            '<diagonal/>'+
+          '</border>'+
+        '</borders>'+
+        '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'+
+        '<cellXfs count="4">'+
+          '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'+
+          '<xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>'+
+          '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"/>'+
+          '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>'+
+        '</cellXfs>'+
+        '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'+
+      '</styleSheet>';
+  }
+
   function buildXlsxBlob(sheets){
     const encoder = new TextEncoder();
     const files = [];
+    const stylesRid = sheets.length + 1;
 
     const contentTypes = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
       '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'+
       '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'+
       '<Default Extension="xml" ContentType="application/xml"/>'+
       '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'+
+      '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'+
       sheets.map((s,i)=>'<Override PartName="/xl/worksheets/sheet'+(i+1)+'.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>').join("")+
       '</Types>';
 
@@ -1080,12 +1308,14 @@ const FIREBASE_CONFIG = {
     const workbookRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
       '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
       sheets.map((s,i)=>'<Relationship Id="rId'+(i+1)+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet'+(i+1)+'.xml"/>').join("")+
+      '<Relationship Id="rId'+stylesRid+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'+
       '</Relationships>';
 
     files.push({name:"[Content_Types].xml", data: encoder.encode(contentTypes)});
     files.push({name:"_rels/.rels", data: encoder.encode(rootRels)});
     files.push({name:"xl/workbook.xml", data: encoder.encode(workbookXml)});
     files.push({name:"xl/_rels/workbook.xml.rels", data: encoder.encode(workbookRels)});
+    files.push({name:"xl/styles.xml", data: encoder.encode(buildStylesXml())});
     sheets.forEach((s,i)=>{
       files.push({name:"xl/worksheets/sheet"+(i+1)+".xml", data: encoder.encode(buildSheetXml(s.rows))});
     });
@@ -1196,6 +1426,7 @@ const FIREBASE_CONFIG = {
   // Reset all
   // ---------------------------------------------------------------
   document.getElementById("btnResetAll").addEventListener("click", ()=>{
+    if(!isAdmin()) return;
     if(!confirm("Вы уверены? Все участники и результаты будут удалены безвозвратно.")) return;
     if(!confirm("Это последнее предупреждение. Подтвердите полный сброс данных.")) return;
     state = defaultState();
@@ -1274,12 +1505,13 @@ const FIREBASE_CONFIG = {
     autoFillSelection();
     renderParticipantsTable();
     renderStartTab();
-    renderResultsTab();
+    renderOnCourseTab();
+    renderProtocolTab();
     tick();
   }
 
   applyTheme();
-  renderAll();
+  applyRoleUI();
   setupRealtimeSync();
 
 })();

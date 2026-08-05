@@ -17,6 +17,7 @@ const FIREBASE_CONFIG = {
   appId: "1:807387307953:web:0751a821578e1eb254a790",
   measurementId: "G-3DYEP4T6J9"
 };
+
   // =================================================================
 
   let db = null, firebaseReady = false;
@@ -67,7 +68,17 @@ const FIREBASE_CONFIG = {
                    actions: { finish:true, revertStart:true, dnf:true } },
     admin:       { tabs: ["protocol","participants","start","oncourse"], actions: { all:true } }
   };
+  const ROLE_STORAGE_KEY = "racetimer_role_v1";
   let currentRole = "guest";
+  try{
+    const savedRole = localStorage.getItem(ROLE_STORAGE_KEY);
+    if(savedRole && ROLE_PERMS[savedRole]) currentRole = savedRole;
+  }catch(e){ /* ignore, default to guest */ }
+
+  function setRole(role){
+    currentRole = role;
+    try{ localStorage.setItem(ROLE_STORAGE_KEY, role); }catch(e){ /* ignore */ }
+  }
 
   function can(action){
     const perms = ROLE_PERMS[currentRole];
@@ -100,14 +111,14 @@ const FIREBASE_CONFIG = {
   document.getElementById("roleSelect").addEventListener("change", (e)=>{
     const wanted = e.target.value;
     if(wanted === "guest" || wanted === currentRole){
-      currentRole = wanted;
+      setRole(wanted);
       applyRoleUI();
       return;
     }
     const pass = prompt("Пароль для роли «" + ROLE_LABELS[wanted] + "»:");
     if(pass === null){ e.target.value = currentRole; return; }
     if(pass === ROLE_PASSWORDS[wanted]){
-      currentRole = wanted;
+      setRole(wanted);
       showToast("Роль: " + ROLE_LABELS[wanted]);
       applyRoleUI();
     } else {
@@ -746,12 +757,9 @@ const FIREBASE_CONFIG = {
       // still system-managed (operator hasn't manually touched checkboxes yet) —
       // always recompute fresh, so start-order edits made after the fact still apply
       state.selectedNextIds = computeDefaultNextGroup();
-    } else if(state.selectedNextIds.length === 0){
-      // operator had manual control but the selection emptied out on its own
-      // (e.g. everyone selected left the queue) — fall back to the default group
-      state.selectedNextIds = computeDefaultNextGroup();
-      state.selectedAuto = true;
     }
+    // if the operator has taken manual control (selectedAuto === false), leave the
+    // selection exactly as they left it — including empty, if they unchecked everyone
   }
 
   function toggleSelect(id){
@@ -789,6 +797,7 @@ const FIREBASE_CONFIG = {
       if(p && p.status==="waiting"){ p.startTime = now; p.status = "racing"; }
     });
     state.selectedNextIds = [];
+    state.selectedAuto = true; // fresh round: auto-suggest the next default group again
     autoFillSelection();
     resetCountdown();
     soundStart();
@@ -851,7 +860,7 @@ const FIREBASE_CONFIG = {
   // Render: Start tab
   // ---------------------------------------------------------------
   function renderStartTab(){
-    document.getElementById("startSettingsCard").style.display = isAdmin() ? "" : "none";
+    document.getElementById("startSettingsCard").style.display = can("start") ? "" : "none";
     document.getElementById("intervalInput").value = state.settings.intervalSec;
     document.querySelectorAll("#startModeToggle button").forEach(b=>b.classList.toggle("active", b.dataset.startmode===state.settings.startMode));
     const waitingCountForLabel = waitingList().length;
@@ -996,35 +1005,34 @@ const FIREBASE_CONFIG = {
   }
 
   function renderProtocolTab(){
-    // ---- Ожидание (waiting), sorted by name ----
-    const waitingSorted = state.participants.filter(p=>p.status==="waiting").slice()
+    // ---- Единый список: ожидание + на дистанции + финиш + сошли/не явились,
+    //      отсортирован по фамилии, статус виден только по заливке фона ----
+    const allSorted = state.participants
+      .filter(p=>p.status==="waiting" || p.status==="racing" || p.status==="finished" || p.status==="dns" || p.status==="dnf")
+      .slice()
       .sort((a,b)=>a.name.localeCompare(b.name,'ru'));
-    document.getElementById("protoWaitingCount").textContent = waitingSorted.length;
-    const wEl = document.getElementById("protoWaitingList");
-    wEl.innerHTML = "";
-    document.getElementById("protoWaitingEmpty").style.display = waitingSorted.length ? "none":"block";
-    waitingSorted.forEach(p=>{
+    document.getElementById("protoAllCount").textContent = allSorted.length;
+    const allEl = document.getElementById("protoAllList");
+    allEl.innerHTML = "";
+    document.getElementById("protoAllEmpty").style.display = allSorted.length ? "none":"block";
+    allSorted.forEach(p=>{
       const row = document.createElement("div");
-      row.className = "protocol-row waiting";
-      row.innerHTML = protocolRowHtml(p);
-      wEl.appendChild(row);
-    });
-
-    // ---- На дистанции (racing), sorted by name ----
-    const racingSorted = state.participants.filter(p=>p.status==="racing").slice()
-      .sort((a,b)=>a.name.localeCompare(b.name,'ru'));
-    document.getElementById("protoRacingCount").textContent = racingSorted.length;
-    const rEl = document.getElementById("protoRacingList");
-    rEl.innerHTML = "";
-    document.getElementById("protoRacingEmpty").style.display = racingSorted.length ? "none":"block";
-    racingSorted.forEach(p=>{
-      const row = document.createElement("div");
-      row.className = "protocol-row racing";
-      row.innerHTML = protocolRowHtml(p) + '<span class="elapsed" data-elapsed-for="'+p.id+'">--:--</span>';
-      rEl.appendChild(row);
+      const statusClass = (p.status==="waiting") ? "status-waiting"
+        : (p.status==="racing") ? "status-racing"
+        : (p.status==="finished") ? "status-finished"
+        : "status-out"; // dns or dnf
+      row.className = "protocol-row " + statusClass;
+      let extra = "";
+      if(p.status==="racing") extra = '<span class="elapsed" data-elapsed-for="'+p.id+'">--:--</span>';
+      else if(p.status==="finished") extra = '<span class="badge finished">Финиш</span>';
+      else if(p.status==="dns") extra = '<span class="badge dns">Не явился</span>';
+      else if(p.status==="dnf") extra = '<span class="badge dnf">Сошёл</span>';
+      row.innerHTML = protocolRowHtml(p) + extra;
+      allEl.appendChild(row);
     });
 
     // ---- Готовятся (checked by the start judge, next to launch) ----
+    // Empty whenever the judge has unchecked everyone — never auto-refilled here.
     const prepList = state.selectedNextIds.map(id=>getParticipant(id)).filter(Boolean);
     const pEl = document.getElementById("protoPrepList");
     pEl.innerHTML = "";
@@ -1053,21 +1061,6 @@ const FIREBASE_CONFIG = {
         '<td data-label="Категория"><span class="badge '+(p.category==="Велосипед"?"bike":"run")+'">'+escapeHtml(p.category)+'</span></td>'+
         '<td data-label="Чистое время" class="mono" style="font-weight:800;">'+formatDuration(p._net)+'</td>';
       body.appendChild(tr);
-    });
-
-    // ---- Не явились / сошли с дистанции (read-only here) ----
-    const dnsDnfList = state.participants.filter(p=>p.status==="dns" || p.status==="dnf");
-    document.getElementById("dnsDnfCard").style.display = dnsDnfList.length ? "block" : "none";
-    const ddBody = document.getElementById("dnsDnfBody");
-    ddBody.innerHTML = "";
-    dnsDnfList.forEach(p=>{
-      const tr = document.createElement("tr");
-      tr.innerHTML =
-        '<td data-label="№"><span class="bib mono">'+escapeHtml(p.bib)+'</span></td>'+
-        '<td data-label="Имя">'+escapeHtml(p.name)+'</td>'+
-        '<td data-label="Категория"><span class="badge '+(p.category==="Велосипед"?"bike":"run")+'">'+escapeHtml(p.category)+'</span></td>'+
-        '<td data-label="Статус"><span class="badge '+statusBadgeClass(p.status)+'">'+statusLabel(p.status)+'</span></td>';
-      ddBody.appendChild(tr);
     });
 
     // admin-only reset control, shown right here for convenience

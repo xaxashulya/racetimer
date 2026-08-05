@@ -56,15 +56,16 @@
     <section class="tab active" id="tab-protocol">
       <div class="protocol-grid">
         <div class="protocol-col-main">
-          <div class="card protocol-section" id="protoWaitingCard">
-            <h2>Ожидание (<span id="protoWaitingCount">0</span>)</h2>
-            <div class="protocol-list" id="protoWaitingList"></div>
-            <div class="empty" id="protoWaitingEmpty" style="display:none;">Пусто.</div>
-          </div>
-          <div class="card protocol-section" id="protoRacingCard">
-            <h2>На дистанции (<span id="protoRacingCount">0</span>)</h2>
-            <div class="protocol-list" id="protoRacingList"></div>
-            <div class="empty" id="protoRacingEmpty" style="display:none;">Пусто.</div>
+          <div class="card protocol-section" id="protoAllCard">
+            <h2>Участники (<span id="protoAllCount">0</span>)</h2>
+            <div class="protocol-legend">
+              <span class="legend-item"><span class="legend-dot status-waiting"></span>Ожидание</span>
+              <span class="legend-item"><span class="legend-dot status-racing"></span>На дистанции</span>
+              <span class="legend-item"><span class="legend-dot status-finished"></span>Финиш</span>
+              <span class="legend-item"><span class="legend-dot status-out"></span>Сошёл / не явился</span>
+            </div>
+            <div class="protocol-list" id="protoAllList"></div>
+            <div class="empty" id="protoAllEmpty" style="display:none;">Пока нет участников.</div>
           </div>
         </div>
         <div class="protocol-col-side">
@@ -100,20 +101,6 @@
           </table>
         </div>
         <div class="empty" id="resultsEmpty" style="display:none;">Финишировавших участников пока нет.</div>
-      </div>
-
-      <div class="card" id="dnsDnfCard" style="display:none;">
-        <h2>Не явились / сошли с дистанции</h2>
-        <div class="tablewrap">
-          <table class="responsive-mobile">
-            <thead>
-              <tr>
-                <th>№</th><th>Имя</th><th>Категория</th><th>Статус</th>
-              </tr>
-            </thead>
-            <tbody id="dnsDnfBody"></tbody>
-          </table>
-        </div>
       </div>
 
       <div class="card" id="adminResetCard" style="display:none;">

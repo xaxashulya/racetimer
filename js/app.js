@@ -17,7 +17,6 @@ const FIREBASE_CONFIG = {
   appId: "1:807387307953:web:0751a821578e1eb254a790",
   measurementId: "G-3DYEP4T6J9"
 };
-
   // =================================================================
 
   let db = null, firebaseReady = false;
@@ -55,7 +54,7 @@ const FIREBASE_CONFIG = {
     admin: "admin"
   };
   const ROLE_LABELS = {
-    guest: "Обычный пользователь",
+    guest: "Участник",
     startJudge: "Судья старт",
     finishJudge: "Судья финиш",
     admin: "Суперпользователь"
@@ -427,21 +426,23 @@ const FIREBASE_CONFIG = {
 
   function markDns(id){
     const p = getParticipant(id);
-    if(!p || p.status !== "waiting") return;
+    if(!p || (p.status !== "waiting" && p.status !== "preregistered")) return;
+    p._prevStatus = p.status; // remember so undo restores correctly
     p.status = "dns";
     state.selectedNextIds = state.selectedNextIds.filter(x=>x!==id);
     saveState();
     renderAll();
-    showToast("№"+p.bib+" отмечен как не явившийся");
+    showToast((p.bib?"№"+p.bib+" отмечен":"«"+p.name+"» отмечен")+" как не явившийся");
   }
 
   function unmarkDns(id){
     const p = getParticipant(id);
     if(!p || p.status !== "dns") return;
-    p.status = "waiting";
+    p.status = p._prevStatus || (p.bib ? "waiting" : "preregistered");
+    delete p._prevStatus;
     saveState();
     renderAll();
-    showToast("№"+p.bib+" возвращён в очередь ожидания");
+    showToast((p.bib?"№"+p.bib:"«"+p.name+"»")+" возвращён в очередь ожидания");
   }
 
   function deleteParticipant(id){
@@ -623,8 +624,10 @@ const FIREBASE_CONFIG = {
         : '';
       let dnsBtn = "";
       if(can("dns")){
-        if(p.status === "waiting") dnsBtn = '<button class="btn small" data-dns="'+p.id+'">Не явился</button> ';
-        else if(p.status === "dns") dnsBtn = '<button class="btn small primary" data-undo-dns="'+p.id+'">Вернуть в очередь</button> ';
+        if(p.status === "waiting" || p.status === "preregistered")
+          dnsBtn = '<button class="btn small" data-dns="'+p.id+'">Не явился</button> ';
+        else if(p.status === "dns")
+          dnsBtn = '<button class="btn small primary" data-undo-dns="'+p.id+'">Вернуть в очередь</button> ';
       }
       const orderEditable = (p.status === "waiting" || p.status === "dns") && can("setStartOrder");
       const orderCell = orderEditable
@@ -1022,11 +1025,8 @@ const FIREBASE_CONFIG = {
         : (p.status==="finished") ? "status-finished"
         : "status-out"; // dns or dnf
       row.className = "protocol-row " + statusClass;
-      let extra = "";
-      if(p.status==="racing") extra = '<span class="elapsed" data-elapsed-for="'+p.id+'">--:--</span>';
-      else if(p.status==="finished") extra = '<span class="badge finished">Финиш</span>';
-      else if(p.status==="dns") extra = '<span class="badge dns">Не явился</span>';
-      else if(p.status==="dnf") extra = '<span class="badge dnf">Сошёл</span>';
+      let extra = protoStatusIcon(p.status, p.category);
+      if(p.status==="racing") extra += '<span class="elapsed" data-elapsed-for="'+p.id+'">--:--</span>';
       row.innerHTML = protocolRowHtml(p) + extra;
       allEl.appendChild(row);
     });
@@ -1040,7 +1040,7 @@ const FIREBASE_CONFIG = {
     prepList.forEach(p=>{
       const row = document.createElement("div");
       row.className = "protocol-row prep";
-      row.innerHTML = protocolRowHtml(p);
+      row.innerHTML = protocolRowHtml(p) + protoStatusIcon("waiting", p.category);
       pEl.appendChild(row);
     });
 
@@ -1066,10 +1066,21 @@ const FIREBASE_CONFIG = {
     // admin-only reset control, shown right here for convenience
     document.getElementById("adminResetCard").style.display = isAdmin() ? "block" : "none";
   }
+  function protoStatusIcon(status, category){
+    // returns a small <img> tag pointing to the appropriate file in pics/
+    let file;
+    if(status === "racing")       file = category === "Велосипед" ? "cycle" : "run";
+    else if(status === "finished") file = "finish";
+    else if(status === "dns")      file = "dns";
+    else if(status === "dnf")      file = "dnf";
+    else                           file = "wait";   // waiting / prep
+    return '<img class="proto-icon" src="pics/'+file+'.png" alt="'+file+'" title="'+file+'">';
+  }
+
   function protocolRowHtml(p){
+    const catAbbr = p.category === "Велосипед" ? "(В)" : "(Б)";
     return '<span class="bib mono">'+escapeHtml(p.bib)+'</span>'+
-      '<span class="name">'+escapeHtml(p.name)+'</span>'+
-      '<span class="badge '+(p.category==="Велосипед"?"bike":"run")+'">'+escapeHtml(p.category)+'</span>';
+      '<span class="name">'+escapeHtml(p.name)+' <span class="proto-cat">'+catAbbr+'</span></span>';
   }
   document.getElementById("resultsCategoryFilter").addEventListener("change", renderProtocolTab);
 

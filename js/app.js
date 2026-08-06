@@ -10,12 +10,10 @@
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyBncAe5D5L41KZCBSfHb707t402g45s6m4",
   authDomain: "app-racetimer.firebaseapp.com",
-  databaseURL: "https://app-racetimer-default-rtdb.firebaseio.com",
   projectId: "app-racetimer",
   storageBucket: "app-racetimer.firebasestorage.app",
   messagingSenderId: "807387307953",
-  appId: "1:807387307953:web:0751a821578e1eb254a790",
-  measurementId: "G-3DYEP4T6J9"
+  appId: "1:807387307953:web:0751a821578e1eb254a790"
 };
   // =================================================================
 
@@ -49,15 +47,15 @@ const FIREBASE_CONFIG = {
   // it to protect anything sensitive.
   // =================================================================
   const ROLE_PASSWORDS = {
-    startJudge: "start",
-    finishJudge: "finish",
-    admin: "admin"
+    startJudge: "start123",
+    finishJudge: "finish123",
+    admin: "admin123"
   };
   const ROLE_LABELS = {
-    guest: "Участник",
+    guest: "Пользователь",
     startJudge: "Судья старт",
     finishJudge: "Судья финиш",
-    admin: "Суперпользователь"
+    admin: "Главный судья"
   };
   const ROLE_PERMS = {
     guest:       { tabs: ["protocol"], actions: {} },
@@ -133,7 +131,7 @@ const FIREBASE_CONFIG = {
 
   function defaultState(){
     return {
-      settings: { intervalSec: 60, theme: "dark", startMode: "auto" },
+      settings: { intervalSec: 60, startMode: "auto" },
       participants: [], // {id,bib,name,category,gender,ageGroup,status,startTime,finishTime}
       countdown: { nextStartAt: null, tenSecFired: false, zeroFired: false },
       selectedNextIds: [],
@@ -351,12 +349,18 @@ const FIREBASE_CONFIG = {
   // ---------------------------------------------------------------
   // Theme
   // ---------------------------------------------------------------
+  // Theme is per-device (localStorage only, never synced via Firestore)
+  const THEME_STORAGE_KEY = "racetimer_theme_v1";
+  function getLocalTheme(){ return localStorage.getItem(THEME_STORAGE_KEY) || "dark"; }
+  function setLocalTheme(t){ localStorage.setItem(THEME_STORAGE_KEY, t); }
+
   function applyTheme(){
-    document.documentElement.setAttribute("data-theme", state.settings.theme);
+    document.documentElement.setAttribute("data-theme", getLocalTheme());
   }
   document.getElementById("themeToggle").addEventListener("click", ()=>{
-    state.settings.theme = state.settings.theme === "dark" ? "light" : "dark";
-    applyTheme(); saveState();
+    const next = getLocalTheme() === "dark" ? "light" : "dark";
+    setLocalTheme(next);
+    applyTheme();
   });
 
   // ---------------------------------------------------------------
@@ -1040,7 +1044,7 @@ const FIREBASE_CONFIG = {
     prepList.forEach(p=>{
       const row = document.createElement("div");
       row.className = "protocol-row prep";
-      row.innerHTML = protocolRowHtml(p) + protoStatusIcon("waiting", p.category);
+      row.innerHTML = protocolRowHtml(p);
       pEl.appendChild(row);
     });
 
@@ -1067,14 +1071,13 @@ const FIREBASE_CONFIG = {
     document.getElementById("adminResetCard").style.display = isAdmin() ? "block" : "none";
   }
   function protoStatusIcon(status, category){
-    // returns a small <img> tag pointing to the appropriate file in pics/
-    let file;
-    if(status === "racing")       file = category === "Велосипед" ? "cycle" : "run";
-    else if(status === "finished") file = "finish";
-    else if(status === "dns")      file = "dns";
-    else if(status === "dnf")      file = "dnf";
-    else                           file = "wait";   // waiting / prep
-    return '<img class="proto-icon" src="pics/'+file+'.png" alt="'+file+'" title="'+file+'">';
+    let cls;
+    if(status === "racing")        cls = category === "Велосипед" ? "cycle" : "run";
+    else if(status === "finished") cls = "finish";
+    else if(status === "dns")      cls = "dns";
+    else if(status === "dnf")      cls = "dnf";
+    else                           cls = "wait";
+    return '<span class="proto-icon proto-icon-'+cls+'" title="'+cls+'"></span>';
   }
 
   function protocolRowHtml(p){

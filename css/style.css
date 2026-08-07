@@ -195,20 +195,12 @@
   .protocol-row .bib{flex-shrink:0;}
   .protocol-row .name{flex:1; font-weight:600; min-width:80px;}
   .proto-cat{font-weight:400; color:var(--text-dim); font-size:.9em;}
-  /* Protocol status icons — SVG masks inherit currentColor automatically */
+  /* Protocol status icons — inline SVG, inherits currentColor automatically */
   .proto-icon{
-    display:inline-block; width:26px; height:26px; flex-shrink:0;
-    background-color:currentColor; opacity:.75;
-    -webkit-mask-size:contain; mask-size:contain;
-    -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
-    -webkit-mask-position:center; mask-position:center;
+    display:inline-flex; align-items:center; justify-content:center;
+    width:26px; height:26px; flex-shrink:0; opacity:.8;
   }
-  .proto-icon-wait  { -webkit-mask-image:url("pics/wait.svg");   mask-image:url("pics/wait.svg"); }
-  .proto-icon-run   { -webkit-mask-image:url("pics/run.svg");    mask-image:url("pics/run.svg"); }
-  .proto-icon-cycle { -webkit-mask-image:url("pics/cycle.svg");  mask-image:url("pics/cycle.svg"); }
-  .proto-icon-finish{ -webkit-mask-image:url("pics/finish.svg"); mask-image:url("pics/finish.svg"); }
-  .proto-icon-dns   { -webkit-mask-image:url("pics/dns.svg");    mask-image:url("pics/dns.svg"); }
-  .proto-icon-dnf   { -webkit-mask-image:url("pics/dnf.svg");    mask-image:url("pics/dnf.svg"); }
+  .proto-icon svg{ width:26px; height:26px; }
   .protocol-row .elapsed{font-weight:800; font-family:ui-monospace,"SF Mono",Consolas,monospace; margin-left:4px;}
   /* status fills — kept simple (color only) for now; a small status icon/image
      on the right is planned as a future visual enhancement */

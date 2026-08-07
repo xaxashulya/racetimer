@@ -1,4 +1,4 @@
-(function(){ 
+(function(){
   "use strict";
 
   // =================================================================
@@ -47,9 +47,9 @@ const FIREBASE_CONFIG = {
   // it to protect anything sensitive.
   // =================================================================
   const ROLE_PASSWORDS = {
-    startJudge: "start123",
-    finishJudge: "finish123",
-    admin: "admin123"
+    startJudge: "start",
+    finishJudge: "finish",
+    admin: "admin"
   };
   const ROLE_LABELS = {
     guest: "Пользователь",

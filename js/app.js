@@ -7,14 +7,14 @@
   // "Your apps" → Web app → SDK setup and configuration.
   // Leave the placeholder as-is to run in local-only (no sync) mode.
   // =================================================================
-const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyBncAe5D5L41KZCBSfHb707t402g45s6m4",
-  authDomain: "app-racetimer.firebaseapp.com",
-  projectId: "app-racetimer",
-  storageBucket: "app-racetimer.firebasestorage.app",
-  messagingSenderId: "807387307953",
-  appId: "1:807387307953:web:0751a821578e1eb254a790"
-};
+  const FIREBASE_CONFIG = {
+    apiKey: "ВСТАВЬТЕ_СЮДА",
+    authDomain: "ВСТАВЬТЕ_СЮДА",
+    projectId: "ВСТАВЬТЕ_СЮДА",
+    storageBucket: "ВСТАВЬТЕ_СЮДА",
+    messagingSenderId: "ВСТАВЬТЕ_СЮДА",
+    appId: "ВСТАВЬТЕ_СЮДА"
+  };
   // =================================================================
 
   let db = null, firebaseReady = false;
@@ -47,9 +47,9 @@ const FIREBASE_CONFIG = {
   // it to protect anything sensitive.
   // =================================================================
   const ROLE_PASSWORDS = {
-    startJudge: "start",
-    finishJudge: "finish",
-    admin: "admin"
+    startJudge: "start123",
+    finishJudge: "finish123",
+    admin: "admin123"
   };
   const ROLE_LABELS = {
     guest: "Пользователь",
@@ -1070,15 +1070,12 @@ const FIREBASE_CONFIG = {
     // admin-only reset control, shown right here for convenience
     document.getElementById("adminResetCard").style.display = isAdmin() ? "block" : "none";
   }
-  const PROTO_ICONS = {
-    wait: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="14" cy="6" r="2.8" fill="currentColor" stroke="none"/><line x1="14" y1="9" x2="14" y2="18"/><line x1="14" y1="12" x2="10" y2="15"/><line x1="14" y1="12" x2="18" y2="15"/><line x1="14" y1="18" x2="11" y2="25"/><line x1="14" y1="18" x2="17" y2="25"/></svg>',
-    run:  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="17" cy="5" r="2.6" fill="currentColor" stroke="none"/><line x1="16" y1="8" x2="12" y2="16"/><line x1="15" y1="11" x2="10" y2="13"/><line x1="14" y1="10" x2="19" y2="8"/><line x1="12" y1="16" x2="17" y2="22"/><line x1="17" y1="22" x2="20" y2="25"/><line x1="12" y1="16" x2="8" y2="20"/><line x1="8" y1="20" x2="6" y2="24"/></svg>',
-    cycle:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="2.4" fill="currentColor" stroke="none"/><path d="M16 4.5 Q18 2.2 20 4.5" stroke-width="1.4"/><circle cx="7" cy="20" r="5.5"/><circle cx="21" cy="20" r="5.5"/><polyline points="7,20 14,20 16,13 10,12"/><line x1="14" y1="20" x2="21" y2="20"/><line x1="7" y1="20" x2="10" y2="12"/><line x1="18" y1="9" x2="21" y2="20"/><line x1="18" y1="9" x2="21" y2="10"/><line x1="14" y1="20" x2="16" y2="13"/><line x1="16" y1="13" x2="20" y2="10"/><line x1="14" y1="20" x2="11" y2="23"/><line x1="14" y1="20" x2="17" y2="17"/></svg>',
-    finish:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="10" x2="26" y2="10" stroke-dasharray="3 2.2" stroke-width="2.2"/><circle cx="14" cy="5" r="2.6" fill="currentColor" stroke="none"/><line x1="14" y1="8" x2="14" y2="17"/><line x1="14" y1="11" x2="8" y2="7"/><line x1="14" y1="11" x2="20" y2="7"/><line x1="14" y1="17" x2="10" y2="24"/><line x1="14" y1="17" x2="18" y2="23"/></svg>',
-    dns:  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5.5" r="2.6" fill="currentColor" stroke="none"/><line x1="12" y1="8" x2="12" y2="17"/><line x1="12" y1="11" x2="8.5" y2="14.5"/><line x1="12" y1="11" x2="15.5" y2="14.5"/><line x1="12" y1="17" x2="9" y2="24"/><line x1="12" y1="17" x2="15" y2="24"/><line x1="20" y1="4" x2="26" y2="10" stroke-width="2.2"/><line x1="26" y1="4" x2="20" y2="10" stroke-width="2.2"/></svg>',
-    dnf:  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="5.5" r="2.6" fill="currentColor" stroke="none"/><line x1="10" y1="8" x2="10" y2="17"/><line x1="10" y1="10" x2="18" y2="9"/><line x1="18" y1="7" x2="18" y2="11" stroke-width="2.2"/><line x1="10" y1="12" x2="7" y2="16"/><line x1="10" y1="17" x2="7" y2="24"/><line x1="10" y1="17" x2="13" y2="24"/></svg>'
-  };
-
+  // ---------------------------------------------------------------
+  // Protocol icons — PNG files from pics/ folder.
+  // To replace an icon: swap the .png file on GitHub. No JS needed.
+  // Files: wait.png, run.png, cycle.png, finish.png, dns.png, dnf.png
+  // Recommended size: 48×48 px, transparent or solid background.
+  // ---------------------------------------------------------------
   function protoStatusIcon(status, category){
     let key;
     if(status === "racing")        key = category === "Велосипед" ? "cycle" : "run";
@@ -1086,7 +1083,7 @@ const FIREBASE_CONFIG = {
     else if(status === "dns")      key = "dns";
     else if(status === "dnf")      key = "dnf";
     else                           key = "wait";
-    return '<span class="proto-icon">'+PROTO_ICONS[key]+'</span>';
+    return '<img class="proto-icon" src="pics/'+key+'.png" alt="'+key+'">';
   }
 
   function protocolRowHtml(p){
@@ -1511,6 +1508,17 @@ const FIREBASE_CONFIG = {
         el.textContent = formatDuration(now - p.startTime);
       }
     });
+
+    // "Готовятся" countdown on the Protocol tab — only in auto mode
+    const prepCd = document.getElementById("protoPrepCountdown");
+    if(prepCd){
+      if(state.settings.startMode === "auto" && state.countdown.nextStartAt && !state.countdown.zeroFired){
+        const secs = Math.max(0, Math.ceil((state.countdown.nextStartAt - now) / 1000));
+        prepCd.textContent = "— старт через " + secs + " с";
+      } else {
+        prepCd.textContent = "";
+      }
+    }
   }
   setInterval(tick, 100);
 

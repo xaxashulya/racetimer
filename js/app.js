@@ -393,40 +393,78 @@ const FIREBASE_CONFIG = {
   }
 
   function assignBib(id){
-    const p = getParticipant(id);
-    if(!p) return;
-    const input = prompt("Номер участника для «"+p.name+"»:", p.bib || "");
-    if(input === null) return;
-    const bib = input.trim();
-    if(!bib){ showToast("Номер не может быть пустым"); return; }
-    if(bibExists(bib, id)){ showToast("Номер "+bib+" уже используется"); return; }
-    p.bib = bib;
-    if(p.status === "preregistered") p.status = "waiting";
-    saveState();
-    renderAll();
-    showToast("Участнику «"+p.name+"» присвоен номер "+bib);
+    // treat same as editParticipant but pre-focus the bib field
+    editParticipant(id, true);
   }
 
-  function editParticipant(id){
+  function editParticipant(id, focusBib){
     const p = getParticipant(id);
     if(!p) return;
-    const nameInput = prompt("Имя, фамилия:", p.name);
-    if(nameInput === null) return;
-    const newName = nameInput.trim();
+    // fill the form at the top with this participant's data
+    document.getElementById("editingId").value = id;
+    document.getElementById("addName").value = p.name;
+    document.getElementById("addBib").value = p.bib || "";
+    document.getElementById("addCategory").value = p.category || "Бег";
+    document.getElementById("addGender").value = p.gender || "М";
+    document.getElementById("addAgeGroup").value = p.ageGroup || "";
+    // switch form into edit mode
+    document.getElementById("addEditTitle").textContent = "Редактировать участника";
+    document.getElementById("addHint").style.display = "none";
+    document.getElementById("btnAddParticipant").style.display = "none";
+    document.getElementById("btnSaveEdit").style.display = "";
+    document.getElementById("btnCancelEdit").style.display = "";
+    document.getElementById("addEditCard").classList.add("edit-mode");
+    // scroll up to the form
+    document.getElementById("addEditCard").scrollIntoView({behavior:"smooth", block:"start"});
+    // focus the right field
+    setTimeout(()=>{
+      document.getElementById(focusBib ? "addBib" : "addName").focus();
+    }, 180);
+  }
+
+  function cancelEdit(){
+    document.getElementById("editingId").value = "";
+    document.getElementById("addName").value = "";
+    document.getElementById("addBib").value = "";
+    document.getElementById("addAgeGroup").value = "";
+    document.getElementById("addCategory").value = "Бег";
+    document.getElementById("addGender").value = "М";
+    document.getElementById("addEditTitle").textContent = "Добавить участника";
+    document.getElementById("addHint").style.display = "";
+    document.getElementById("btnAddParticipant").style.display = "";
+    document.getElementById("btnSaveEdit").style.display = "none";
+    document.getElementById("btnCancelEdit").style.display = "none";
+    document.getElementById("addEditCard").classList.remove("edit-mode");
+  }
+
+  document.getElementById("btnSaveEdit").addEventListener("click", ()=>{
+    if(!can("editParticipant")) return;
+    const id = document.getElementById("editingId").value;
+    const p = getParticipant(id);
+    if(!p) return;
+    const newName = (document.getElementById("addName").value||"").trim();
+    const newBib  = (document.getElementById("addBib").value||"").trim();
+    const newCat  = document.getElementById("addCategory").value;
+    const newGen  = document.getElementById("addGender").value;
+    const newAge  = (document.getElementById("addAgeGroup").value||"").trim();
     if(!newName){ showToast("Имя не может быть пустым"); return; }
-    const bibInput = prompt("Номер (оставьте пустым, если ещё не выдан):", p.bib || "");
-    if(bibInput === null) return;
-    const newBib = bibInput.trim();
     if(newBib && bibExists(newBib, id)){ showToast("Номер "+newBib+" уже используется"); return; }
     p.name = newName;
-    p.bib = newBib;
-    // keep status in sync only between preregistered/waiting; never touch racing/finished
-    if(p.status === "preregistered" && newBib) p.status = "waiting";
-    if(p.status === "waiting" && !newBib) p.status = "preregistered";
+    p.bib  = newBib;
+    p.category = newCat;
+    p.gender   = newGen;
+    p.ageGroup = newAge;
+    if(p.status === "preregistered" && newBib)  p.status = "waiting";
+    if(p.status === "waiting"       && !newBib) p.status = "preregistered";
     saveState();
+    cancelEdit();
     renderAll();
     showToast("Данные участника обновлены");
-  }
+  });
+
+  document.getElementById("btnCancelEdit").addEventListener("click", ()=>{
+    cancelEdit();
+  });
 
   function markDns(id){
     const p = getParticipant(id);
@@ -623,9 +661,6 @@ const FIREBASE_CONFIG = {
       const bibCell = p.bib
         ? '<span class="bib mono">'+escapeHtml(p.bib)+'</span>'
         : '<span style="color:var(--text-faint);">—</span>';
-      const assignBtn = (p.status === "preregistered" && can("assignBib"))
-        ? '<button class="btn small primary" data-assign="'+p.id+'">Выдать номер</button> '
-        : '';
       let dnsBtn = "";
       if(can("dns")){
         if(p.status === "waiting" || p.status === "preregistered")
@@ -649,7 +684,7 @@ const FIREBASE_CONFIG = {
         '<td data-label="Группа">'+escapeHtml(p.ageGroup||"—")+'</td>'+
         '<td data-label="Оч. старта">'+orderCell+'</td>'+
         '<td data-label="Статус"><span class="badge '+statusBadgeClass(p.status)+'">'+statusLabel(p.status)+'</span></td>'+
-        '<td data-actions>'+assignBtn+dnsBtn+editBtn+timeBtn+delBtn+'</td>';
+        '<td data-actions>'+dnsBtn+editBtn+timeBtn+delBtn+'</td>';
       body.appendChild(tr);
     });
 
@@ -663,10 +698,6 @@ const FIREBASE_CONFIG = {
         inp.value = v;
         saveState();
       });
-    });
-
-    body.querySelectorAll("[data-assign]").forEach(btn=>{
-      btn.addEventListener("click", ()=>{ if(can("assignBib")) assignBib(btn.dataset.assign); });
     });
 
     body.querySelectorAll("[data-dns]").forEach(btn=>{
@@ -1029,8 +1060,12 @@ const FIREBASE_CONFIG = {
         : (p.status==="finished") ? "status-finished"
         : "status-out"; // dns or dnf
       row.className = "protocol-row " + statusClass;
-      let extra = protoStatusIcon(p.status, p.category);
-      if(p.status==="racing") extra += '<span class="elapsed" data-elapsed-for="'+p.id+'">--:--</span>';
+      let extra = "";
+      if(p.status==="racing"){
+        extra = '<span class="elapsed" data-elapsed-for="'+p.id+'">--:--</span>' + protoStatusIcon(p.status, p.category);
+      } else {
+        extra = protoStatusIcon(p.status, p.category);
+      }
       row.innerHTML = protocolRowHtml(p) + extra;
       allEl.appendChild(row);
     });

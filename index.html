@@ -138,8 +138,9 @@ This typically indicates that your device does not have a healthy Internet conne
     <!-- ===================== PARTICIPANTS TAB ===================== -->
     <section class="tab" id="tab-participants">
       <div class="grid2">
-        <div class="card">
-          <h2>Добавить участника</h2>
+        <div class="card" id="addEditCard">
+          <h2 id="addEditTitle">Добавить участника</h2>
+          <input type="hidden" id="editingId" value="">
           <div class="row">
             <div class="field" style="flex:2; min-width:200px;">
               <label>Фамилия, имя</label>
@@ -150,7 +151,7 @@ This typically indicates that your device does not have a healthy Internet conne
               <input type="text" id="addBib" inputmode="numeric" placeholder="выдать позже">
             </div>
           </div>
-          <p style="font-size:12px; color:var(--text-dim); margin:8px 0 0;">
+          <p id="addHint" style="font-size:12px; color:var(--text-dim); margin:8px 0 0;">
             Можно заранее забить только фамилии — номер участник получит на месте, и его можно будет присвоить позже кнопкой «Выдать номер».
           </p>
           <div class="row" style="margin-top:10px;">
@@ -173,8 +174,10 @@ This typically indicates that your device does not have a healthy Internet conne
               <input type="text" id="addAgeGroup" placeholder="напр. 35-44">
             </div>
           </div>
-          <div class="row" style="margin-top:12px;">
+          <div class="row" style="margin-top:12px; gap:8px;">
             <button class="btn primary" id="btnAddParticipant">+ Добавить</button>
+            <button class="btn primary" id="btnSaveEdit" style="display:none;">Сохранить</button>
+            <button class="btn" id="btnCancelEdit" style="display:none;">Отменить</button>
           </div>
         </div>
 

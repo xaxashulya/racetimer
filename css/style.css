@@ -125,7 +125,7 @@
   .badge.dnf{background:rgba(225,75,75,.15); color:var(--danger);}
   .badge.dns{background:rgba(92,104,112,.22); color:var(--text-faint);}
 
-  .startorder-input{width:48px; padding:6px 4px; text-align:center;}
+  .card.edit-mode{border-color:var(--accent); box-shadow:0 0 0 2px rgba(255,90,31,.18), var(--shadow);}
 
   /* ---- Start tab hero ---- */
   .start-hero{

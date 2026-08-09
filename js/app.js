@@ -47,9 +47,9 @@ const FIREBASE_CONFIG = {
   // it to protect anything sensitive.
   // =================================================================
   const ROLE_PASSWORDS = {
-    startJudge: "start",
-    finishJudge: "finish",
-    admin: "admin"
+    startJudge: "start123",
+    finishJudge: "finish123",
+    admin: "admin123"
   };
   const ROLE_LABELS = {
     guest: "Пользователь",
@@ -1560,6 +1560,66 @@ const FIREBASE_CONFIG = {
   // ---------------------------------------------------------------
   // Master render
   // ---------------------------------------------------------------
+  // Per-device local persistence (tab + countdown)
+  // ---------------------------------------------------------------
+  const TAB_STORAGE_KEY = "racetimer_tab_v1";
+  const CD_STORAGE_KEY  = "racetimer_cd_v1";
+
+  function saveLocalTab(tabId){
+    try{ localStorage.setItem(TAB_STORAGE_KEY, tabId); }catch(e){}
+  }
+  function restoreLocalTab(){
+    try{
+      const saved = localStorage.getItem(TAB_STORAGE_KEY);
+      if(saved && tabAllowed(saved)){
+        document.querySelectorAll("nav.tabs button").forEach(b=>b.classList.toggle("active", b.dataset.tab===saved));
+        document.querySelectorAll("section.tab").forEach(s=>s.classList.toggle("active", s.id==="tab-"+saved));
+      }
+    }catch(e){}
+  }
+
+  // Persist countdown target timestamp so auto-mode survives a page refresh
+  function saveLocalCountdown(){
+    try{
+      if(state.countdown.nextStartAt && !state.countdown.zeroFired){
+        localStorage.setItem(CD_STORAGE_KEY, JSON.stringify({
+          nextStartAt: state.countdown.nextStartAt,
+          tenSecFired: state.countdown.tenSecFired
+        }));
+      } else {
+        localStorage.removeItem(CD_STORAGE_KEY);
+      }
+    }catch(e){}
+  }
+  function restoreLocalCountdown(){
+    try{
+      const raw = localStorage.getItem(CD_STORAGE_KEY);
+      if(!raw) return;
+      const saved = JSON.parse(raw);
+      // only restore if the target time is still in the future
+      if(saved.nextStartAt && saved.nextStartAt > Date.now()){
+        state.countdown.nextStartAt = saved.nextStartAt;
+        state.countdown.tenSecFired = saved.tenSecFired || false;
+        state.countdown.zeroFired   = false;
+      } else {
+        localStorage.removeItem(CD_STORAGE_KEY);
+      }
+    }catch(e){}
+  }
+
+  // Patch tabs click handler to also save the chosen tab
+  document.getElementById("tabs").addEventListener("click", (e)=>{
+    const btn = e.target.closest("button[data-tab]");
+    if(btn && tabAllowed(btn.dataset.tab)) saveLocalTab(btn.dataset.tab);
+  }, true); // capture phase so it fires before the main handler
+
+  // Patch saveState to also persist countdown locally
+  const _origSaveState = saveState;
+  saveState = function(){
+    _origSaveState();
+    saveLocalCountdown();
+  };
+
   function renderAll(){
     autoFillSelection();
     renderParticipantsTable();
@@ -1570,7 +1630,9 @@ const FIREBASE_CONFIG = {
   }
 
   applyTheme();
-  applyRoleUI();
+  applyRoleUI();        // sets role first (needed for tabAllowed)
+  restoreLocalTab();    // then restore tab (respects role permissions)
+  restoreLocalCountdown();
   setupRealtimeSync();
 
 })();

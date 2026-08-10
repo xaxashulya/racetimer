@@ -47,9 +47,9 @@ const FIREBASE_CONFIG = {
   // it to protect anything sensitive.
   // =================================================================
   const ROLE_PASSWORDS = {
-    startJudge: "start123",
-    finishJudge: "finish123",
-    admin: "admin123"
+    startJudge: "start",
+    finishJudge: "finish",
+    admin: "admin"
   };
   const ROLE_LABELS = {
     guest: "Пользователь",
@@ -161,7 +161,7 @@ const FIREBASE_CONFIG = {
     }
   }
 
-  function saveState(){
+  function _writeToFirebase(includeCountdown){
     if(!firebaseReady){
       try{
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -172,13 +172,13 @@ const FIREBASE_CONFIG = {
       return;
     }
     setSyncStatus("online", "Синхронизация…");
-    const writes = [];
-    writes.push(META_DOC.set({
+    const meta = {
       settings: state.settings,
-      countdown: state.countdown,
       selectedNextIds: state.selectedNextIds,
       selectedAuto: state.selectedAuto
-    }));
+    };
+    if(includeCountdown) meta.countdown = state.countdown;
+    const writes = [META_DOC.set(meta, {merge: true})];
     const currentIds = new Set();
     state.participants.forEach(p=>{
       currentIds.add(p.id);
@@ -203,6 +203,14 @@ const FIREBASE_CONFIG = {
     });
   }
 
+  // Regular save — does NOT touch the countdown in Firebase.
+  // Use this for participant changes, selection, settings (non-timer).
+  function saveState(){ _writeToFirebase(false); }
+
+  // Explicit countdown save — only called when the start judge
+  // intentionally changes the timer (doStart, mode switch, etc.)
+  function saveStateWithCountdown(){ _writeToFirebase(true); }
+
   function setupRealtimeSync(){
     if(!firebaseReady){
       setSyncStatus("offline", "Работает локально, без онлайн-синхронизации (Firebase не настроен)");
@@ -218,7 +226,19 @@ const FIREBASE_CONFIG = {
       if(snap.exists){
         const data = snap.data();
         state.settings = Object.assign(state.settings, data.settings||{});
-        state.countdown = Object.assign(state.countdown, data.countdown||{});
+        // Only update countdown from Firebase when we don't have a running one locally.
+        // This prevents a page refresh from a viewer/finish device from wiping the
+        // active countdown that the start judge set.
+        const incoming = data.countdown || {};
+        const localRunning = state.countdown.nextStartAt && !state.countdown.zeroFired;
+        if(!localRunning){
+          state.countdown = Object.assign(state.countdown, incoming);
+        } else {
+          // still sync zeroFired/tenSecFired flags so auto-start fires correctly
+          // but never touch nextStartAt if we already have one running
+          if(incoming.zeroFired !== undefined)   state.countdown.zeroFired   = incoming.zeroFired;
+          if(incoming.tenSecFired !== undefined) state.countdown.tenSecFired = incoming.tenSecFired;
+        }
         state.selectedNextIds = data.selectedNextIds || [];
         state.selectedAuto = data.selectedAuto !== undefined ? data.selectedAuto : true;
         applyTheme();
@@ -744,7 +764,7 @@ const FIREBASE_CONFIG = {
     if(isNaN(v) || v < 5) v = 5;
     state.settings.intervalSec = v;
     e.target.value = v;
-    saveState();
+    saveState(); // interval change doesn't affect a running countdown
   });
 
   document.getElementById("startModeToggle").addEventListener("click", (e)=>{
@@ -754,7 +774,7 @@ const FIREBASE_CONFIG = {
     state.settings.startMode = btn.dataset.startmode;
     document.querySelectorAll("#startModeToggle button").forEach(b=>b.classList.toggle("active", b===btn));
     resetCountdown();
-    saveState();
+    saveStateWithCountdown(); // mode switch explicitly changes the countdown
     renderStartTab();
   });
 
@@ -839,7 +859,7 @@ const FIREBASE_CONFIG = {
     autoFillSelection();
     resetCountdown();
     soundStart();
-    saveState();
+    saveStateWithCountdown();
     renderAll();
   }
   document.getElementById("btnBigStart").addEventListener("click", doStart);
@@ -1491,12 +1511,12 @@ const FIREBASE_CONFIG = {
     document.getElementById("headerClock").textContent = formatClock(now);
     document.getElementById("currentClock2").textContent = formatClockCenti(now);
 
-    // stop the countdown if the queue has emptied out (nothing left to auto-start)
+    // stop the countdown ONLY when the queue is empty — no other condition
     if(state.settings.startMode === "auto" && state.countdown.nextStartAt && waitingList().length === 0){
       state.countdown.nextStartAt = null;
       state.countdown.tenSecFired = false;
       state.countdown.zeroFired = false;
-      saveState();
+      saveStateWithCountdown();
     }
 
     // countdown
@@ -1517,7 +1537,7 @@ const FIREBASE_CONFIG = {
             doStart();
             showToast("Автостарт: время вышло — выбранные участники запущены");
           } else {
-            saveState();
+            saveStateWithCountdown();
           }
         }
       } else {
@@ -1527,7 +1547,7 @@ const FIREBASE_CONFIG = {
           if(!state.countdown.tenSecFired){
             state.countdown.tenSecFired = true;
             soundTenSec();
-            saveState();
+            saveStateWithCountdown();
           }
         }
       }
@@ -1560,10 +1580,10 @@ const FIREBASE_CONFIG = {
   // ---------------------------------------------------------------
   // Master render
   // ---------------------------------------------------------------
-  // Per-device local persistence (tab + countdown)
+  // Per-device local persistence (active tab only)
+  // Countdown lives in Firebase so all devices see it in sync.
   // ---------------------------------------------------------------
   const TAB_STORAGE_KEY = "racetimer_tab_v1";
-  const CD_STORAGE_KEY  = "racetimer_cd_v1";
 
   function saveLocalTab(tabId){
     try{ localStorage.setItem(TAB_STORAGE_KEY, tabId); }catch(e){}
@@ -1578,47 +1598,11 @@ const FIREBASE_CONFIG = {
     }catch(e){}
   }
 
-  // Persist countdown target timestamp so auto-mode survives a page refresh
-  function saveLocalCountdown(){
-    try{
-      if(state.countdown.nextStartAt && !state.countdown.zeroFired){
-        localStorage.setItem(CD_STORAGE_KEY, JSON.stringify({
-          nextStartAt: state.countdown.nextStartAt,
-          tenSecFired: state.countdown.tenSecFired
-        }));
-      } else {
-        localStorage.removeItem(CD_STORAGE_KEY);
-      }
-    }catch(e){}
-  }
-  function restoreLocalCountdown(){
-    try{
-      const raw = localStorage.getItem(CD_STORAGE_KEY);
-      if(!raw) return;
-      const saved = JSON.parse(raw);
-      // only restore if the target time is still in the future
-      if(saved.nextStartAt && saved.nextStartAt > Date.now()){
-        state.countdown.nextStartAt = saved.nextStartAt;
-        state.countdown.tenSecFired = saved.tenSecFired || false;
-        state.countdown.zeroFired   = false;
-      } else {
-        localStorage.removeItem(CD_STORAGE_KEY);
-      }
-    }catch(e){}
-  }
-
-  // Patch tabs click handler to also save the chosen tab
+  // Save the chosen tab whenever the user clicks a nav button
   document.getElementById("tabs").addEventListener("click", (e)=>{
     const btn = e.target.closest("button[data-tab]");
     if(btn && tabAllowed(btn.dataset.tab)) saveLocalTab(btn.dataset.tab);
   }, true); // capture phase so it fires before the main handler
-
-  // Patch saveState to also persist countdown locally
-  const _origSaveState = saveState;
-  saveState = function(){
-    _origSaveState();
-    saveLocalCountdown();
-  };
 
   function renderAll(){
     autoFillSelection();
@@ -1630,9 +1614,8 @@ const FIREBASE_CONFIG = {
   }
 
   applyTheme();
-  applyRoleUI();        // sets role first (needed for tabAllowed)
-  restoreLocalTab();    // then restore tab (respects role permissions)
-  restoreLocalCountdown();
+  applyRoleUI();     // sets role first (needed for tabAllowed)
+  restoreLocalTab(); // then restore tab (respects role permissions)
   setupRealtimeSync();
 
 })();

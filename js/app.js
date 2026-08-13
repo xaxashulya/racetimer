@@ -226,21 +226,19 @@ const FIREBASE_CONFIG = {
       if(snap.exists){
         const data = snap.data();
         state.settings = Object.assign(state.settings, data.settings||{});
-        // Only update countdown from Firebase when we don't have a running one locally.
-        // This prevents a page refresh from a viewer/finish device from wiping the
-        // active countdown that the start judge set.
+        // Firebase is the single source of truth for countdown.
+        // Always accept it — this ensures all devices stay in sync.
         const incoming = data.countdown || {};
-        const localRunning = state.countdown.nextStartAt && !state.countdown.zeroFired;
-        if(!localRunning){
-          state.countdown = Object.assign(state.countdown, incoming);
-        } else {
-          // still sync zeroFired/tenSecFired flags so auto-start fires correctly
-          // but never touch nextStartAt if we already have one running
-          if(incoming.zeroFired !== undefined)   state.countdown.zeroFired   = incoming.zeroFired;
-          if(incoming.tenSecFired !== undefined) state.countdown.tenSecFired = incoming.tenSecFired;
-        }
+        // Merge carefully: only update fields that actually changed, so a device
+        // that already played tenSec/zeroFired sounds doesn't replay them.
+        const prevZero  = state.countdown.zeroFired;
+        const prevTen   = state.countdown.tenSecFired;
+        Object.assign(state.countdown, incoming);
+        // If Firebase rolled back zeroFired (new round started), reset local flags too
+        if(!incoming.zeroFired)  state.countdown.zeroFired   = false;
+        if(!incoming.tenSecFired) state.countdown.tenSecFired = false;
         state.selectedNextIds = data.selectedNextIds || [];
-        state.selectedAuto = data.selectedAuto !== undefined ? data.selectedAuto : true;
+        state.selectedAuto    = data.selectedAuto !== undefined ? data.selectedAuto : true;
         applyTheme();
       }
       setSyncStatus("online", "Онлайн — изменения видны всем устройствам");
@@ -836,14 +834,16 @@ const FIREBASE_CONFIG = {
   }
 
   function resetCountdown(){
+    // Called only by: doStart, mode-switch, explicit stop.
+    // Always writes to Firebase immediately so all devices see the same value.
     if(state.settings.startMode === "manual" || waitingList().length === 0){
-      // manual mode, or nobody left in the queue: no countdown runs
       state.countdown.nextStartAt = null;
     } else {
-      state.countdown.nextStartAt = Date.now() + state.settings.intervalSec*1000;
+      state.countdown.nextStartAt = Date.now() + state.settings.intervalSec * 1000;
     }
     state.countdown.tenSecFired = false;
-    state.countdown.zeroFired = false;
+    state.countdown.zeroFired   = false;
+    state.countdown.autoFiring  = false; // lock: only one device fires auto-start
   }
 
   function doStart(){
@@ -1511,49 +1511,71 @@ const FIREBASE_CONFIG = {
     document.getElementById("headerClock").textContent = formatClock(now);
     document.getElementById("currentClock2").textContent = formatClockCenti(now);
 
-    // stop the countdown ONLY when the queue is empty — no other condition
-    if(state.settings.startMode === "auto" && state.countdown.nextStartAt && waitingList().length === 0){
+    // ---- Queue empty: stop countdown (only the device that notices it first) ----
+    if(state.settings.startMode === "auto"
+       && state.countdown.nextStartAt
+       && !state.countdown.zeroFired
+       && waitingList().length === 0){
       state.countdown.nextStartAt = null;
       state.countdown.tenSecFired = false;
-      state.countdown.zeroFired = false;
+      state.countdown.zeroFired   = false;
+      state.countdown.autoFiring  = false;
       saveStateWithCountdown();
     }
 
-    // countdown
+    // ---- Display ----
     const cdEl = document.getElementById("countdownNum");
-    if(state.countdown.nextStartAt){
-      const remainMs = state.countdown.nextStartAt - now;
-      const remainSec = remainMs/1000;
+    if(!state.countdown.nextStartAt){
       cdEl.classList.remove("ready","over");
-      if(remainSec <= 0 || state.countdown.zeroFired){
-        // timer stops at 00:00 — no negative countdown
+      cdEl.textContent = "—:—";
+    } else {
+      const remainMs  = state.countdown.nextStartAt - now;
+      const remainSec = remainMs / 1000;
+      cdEl.classList.remove("ready","over");
+
+      if(state.countdown.zeroFired){
+        // Countdown already fired (written to Firebase by whoever got there first).
+        // Just show 00:00 — don't fire again.
         cdEl.textContent = "00:00";
         cdEl.classList.add("over");
-        if(!state.countdown.zeroFired){
-          state.countdown.zeroFired = true;
+
+      } else if(remainSec <= 0){
+        // We're the first to notice zero on this device — try to claim the lock.
+        // Write autoFiring=true to Firebase; whoever wins the race does the start.
+        cdEl.textContent = "00:00";
+        cdEl.classList.add("over");
+        if(!state.countdown.autoFiring && can("start")){
+          // Optimistically claim the lock locally to avoid double-write from this device
+          state.countdown.autoFiring = true;
+          state.countdown.zeroFired  = true;
           soundGo();
           if(state.selectedNextIds.length > 0){
-            // auto-launch whichever participants are currently checked
-            doStart();
+            doStart(); // doStart calls saveStateWithCountdown internally
             showToast("Автостарт: время вышло — выбранные участники запущены");
           } else {
             saveStateWithCountdown();
           }
+        } else if(!state.countdown.autoFiring && !can("start")){
+          // Non-start-judge device: just mark zeroFired locally for display;
+          // the start-judge device will handle the actual fire.
+          state.countdown.zeroFired = true;
+          soundGo();
+          // Don't write to Firebase — let the start judge device do it
         }
+
       } else {
+        // Normal countdown display
         cdEl.textContent = formatMMSS(remainSec);
         if(remainSec <= 10){
           cdEl.classList.add("ready");
           if(!state.countdown.tenSecFired){
             state.countdown.tenSecFired = true;
             soundTenSec();
-            saveStateWithCountdown();
+            // Only the start-judge writes the flag; others just play the sound
+            if(can("start")) saveStateWithCountdown();
           }
         }
       }
-    } else {
-      cdEl.classList.remove("ready","over");
-      cdEl.textContent = "—:—";
     }
 
     // live elapsed times for on-course participants
